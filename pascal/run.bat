@@ -1,0 +1,1 @@
+fpc -omain.exe AdventOfCode.pp && main.exe %1
