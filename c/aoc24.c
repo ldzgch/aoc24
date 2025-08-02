@@ -4,6 +4,8 @@
 #define GB_IMPLEMENTATION
 #include "gb.h"
 
+
+#define FOR(idx, start, end) for(i32 idx = (start);idx < (end);idx += 1)
 // utils
 
 u32 read_u32(FILE* f) {
@@ -18,6 +20,27 @@ u32 read_u32(FILE* f) {
     return res;
 }
 
+i64 pow_i64(i64 base, i64 exp) {
+    if (exp == 0) return 1;
+    if (exp == 1) return base;
+    i64 res = 0;
+    i64 half_exp = exp / 2;
+    b32 odd_exp = exp & 1;
+    i64 half_pow = pow_i64(base, half_exp);
+
+    return half_pow * half_pow * ((odd_exp) ? base : 1);
+}
+
+gbString read_entire_file(FILE* f, gbAllocator a) {
+    fseek(f, 0, SEEK_END);
+    i64 file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    gbString data = gb_string_make_length(a, NULL, file_len);
+    fread(data, 1, file_len, f);
+
+    return data;
+}
 
 #define DAY(number, file, alloc, part) day##number(FILE * file, gbAllocator a, b32 part)
 
@@ -417,12 +440,13 @@ b32 day6_loop_test(i8* data, i32 w, i32 h, i32 y, i32 x, i32 rot, i32 old_y, i32
     i32 test_y = old_y, test_x = old_x;
     i32 test_rot = (rot + 1) % 4;
     while (true) {
-        if (ROT_BUF(test_y, test_x) == -1)
-            ROT_BUF(test_y, test_x) = test_rot;
-        else if (ROT_BUF(test_y, test_x) == test_rot) {
+        if (ROT_BUF(test_y, test_x) == test_rot) {
             is_looping = true; // return to place, loop
             break;
         }
+
+        if (ROT_BUF(test_y, test_x) == -1)
+            ROT_BUF(test_y, test_x) = test_rot;
 
         i32 new_test_x = test_x, new_test_y = test_y;
         switch (test_rot) {
@@ -544,6 +568,205 @@ void DAY(6, f, a, part1) {
         printf("%i", loop_count);
 }
 
+void DAY(7, f, a, part1) {
+    gbArray(i32) nums; gb_array_init(nums, a);
+    i64 true_test_num_sum = 0;
+
+    while (!feof(f)) {
+        gb_array_clear(nums);
+        i64 test_num;
+        fscanf(f, "%lli:", &test_num);
+        while(true) {
+            i32 num;
+            fscanf(f, "%i", &num);
+            gb_array_append(nums, num);
+            i8 c = fgetc(f);
+            if (c == '\n' || c == EOF)
+                break;
+        }
+        i32 nums_count = gb_array_count(nums);
+        if (part1) {
+            i32 num_variations = 1 << (nums_count - 1);
+            for (i32 variation = 0;variation < num_variations;variation++) {
+                i64 res = nums[0];
+                for (i32 bit = 1;bit < nums_count;bit++) {
+                    if ((1 << (bit-1)) & variation) {
+                        res = res * nums[bit];
+                    } else {
+                        res = res + nums[bit];
+                    }
+                }
+                if (res == test_num) {
+                    true_test_num_sum += test_num;
+                    break;
+                }
+            }
+        } else {
+            i32 num_variations = pow(3, (nums_count - 1));
+            for (i32 variation = 0;variation < num_variations;variation++) {
+                i64 res = nums[0];
+                for (i32 j = 1;j < nums_count;j++) {
+                    i32 operator = (variation / pow_i64(3, j-1)) % 3;
+                    switch (operator) {
+                    case 0:  res = res * nums[j]; break;
+                    case 1:  res = res + nums[j]; break;
+                    case 2: {
+                        i32 num = nums[j];
+                        i32 num_digits = 0;
+                        while (num > 0) {
+                            num /= 10;
+                            num_digits += 1;
+                        }
+                        res = pow_i64(10, num_digits) * res + nums[j];
+                    } break;
+                    }
+
+                }
+                if (res == test_num) {
+                    // printf("found %lli, var %i\n", test_num, variation);
+                    true_test_num_sum += test_num;
+                    break;
+                }
+            }
+
+        }
+    }
+    printf("%lli", true_test_num_sum);
+}
+
+void DAY(8, f, a, part1) {
+    fseek(f, 0, SEEK_END);
+    i64 file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    i8* data = malloc(file_len);
+    fread(data, 1, file_len, f);
+
+    i32 idx = 0;
+    for(;idx < file_len;idx++)
+        if (data[idx] == '\n') break;
+
+    i32 w, h;
+    w = idx;
+    h = file_len / idx;
+
+    #define NUM_FREQS (10 + 26 + 26)
+    gbArray(i32) antennas[NUM_FREQS];
+    FOR(i, 0, NUM_FREQS) {
+        gb_array_init(antennas[i], a);
+    }
+
+    FOR(pos, 0, file_len) {
+        if (gb_char_is_digit(data[pos])) {
+            int freq_idx = data[pos] - '0';
+            // GB_ASSERT(freq_idx >= 0 && freq_idx < NUM_FREQS);
+            gb_array_append(antennas[freq_idx], pos);
+        }
+        if (gb_char_is_alpha(data[pos])) {
+            int freq_idx;
+            if (data[pos] >= 'a')
+                freq_idx = data[pos] - 'a' + 10 + 26;
+            if (data[pos] <= 'Z')
+                freq_idx = data[pos] - 'A' + 10;
+            GB_ASSERT(freq_idx >= 0 && freq_idx < NUM_FREQS);
+            gb_array_append(antennas[freq_idx], pos);
+        }
+    }
+
+
+    i8* antinodes = malloc(file_len);
+    gb_memcopy(antinodes, data, file_len);
+
+
+    int multiplier_max = gb_max(h, w);
+
+    FOR(freq, 0, NUM_FREQS) {
+        gbArray(i32) positions = antennas[freq];
+        i32 num_positions = gb_array_count(positions);
+        FOR(i, 0, num_positions) {
+            i32 ix = positions[i] % (w+1);
+            i32 iy = positions[i] / (w+1);
+            FOR(j, (i+1), num_positions) {
+                i32 jx = positions[j] % (w+1);
+                i32 jy = positions[j] / (w+1);
+
+                i32 diffx = ix - jx;
+                i32 diffy = iy - jy;
+
+                // k * diff + i = anode for k for -inf to +inf
+                // rather than inf take (+-)max(w, h)
+                if (!part1) {
+                    FOR(k, -multiplier_max, multiplier_max) {
+                        i32 locx = ix + k * diffx;
+                        i32 locy = iy + k * diffy;
+
+                        b32 loc_in_bounds = !(locx < 0 || locx >= w ||
+                            locy < 0 || locy >= h);
+
+                        if (loc_in_bounds) {
+                            antinodes[locy * (w+1) + locx] = '#';
+                        }
+                    }
+                } else {
+                    i32 loc1x = ix + diffx;
+                    i32 loc1y = iy + diffy;
+
+                    i32 loc2x = jx - diffx;
+                    i32 loc2y = jy - diffy;
+
+                    b32 loc1_in_bounds = !(loc1x < 0 || loc1x >= w ||
+                        loc1y < 0 || loc1y >= h);
+
+                    if (loc1_in_bounds) {
+                        antinodes[loc1y * (w+1) + loc1x] = '#';
+                    }
+
+                    b32 loc2_in_bounds = !(loc2x < 0 || loc2x >= w ||
+                        loc2y < 0 || loc2y >= h);
+
+                    if (loc2_in_bounds) {
+                        antinodes[loc2y * (w+1) + loc2x] = '#';
+                    }
+                }
+            }
+        }
+    }
+    i32 num_anodes = 0;
+    FOR(i, 0, file_len) {
+        if (antinodes[i] == '#')
+            num_anodes += 1;
+    }
+
+    fwrite(antinodes, 1, file_len, stdout);
+
+    printf("%i", num_anodes);
+}
+
+void DAY(9, f, a, part1) {
+    gbString data = read_entire_file(f, a);
+    i32 data_len = gb_string_length(data);
+
+    i64 num_blocks = 0;
+    FOR(i, 0, data_len) {
+        num_blocks += data[i];
+    }
+    i32 first_free_idx = 1;
+    i32 last_file_idx = data_len - ((data_len % 2 == 0) ? 2 : 1);
+
+    while (first_free_idx < last_file_idx) {
+        i32 file_num_blocks = data[last_file_idx];
+        i32 free_num_blocks = data[first_free_idx];
+
+        if (
+        free_num_blocks < file_num_blocks) {
+
+        }
+
+    }
+
+    printf("%lli", num_blocks);
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -570,6 +793,9 @@ int main(int argc, char**argv) {
     CASE_DAY(4, "../data/data4.txt")
     CASE_DAY(5, "../data/data5.txt")
     CASE_DAY(6, "../data/data6.txt")
+    CASE_DAY(7, "../data/data7.txt")
+    CASE_DAY(8, "../data/data8.txt")
+    CASE_DAY(9, "../data/data9.txt")
     default:
         puts("Bad exercise number");
         return 1;
@@ -578,60 +804,3 @@ int main(int argc, char**argv) {
 
     return 0;
 }
-/*
-#define DynArrayImpl(Type) \
-    typedef struct DA { \
-        Type* data; \
-        int len, cap; \
-    } DynArray##Type; \
-    DynArray##Type DynArrayMake(int size) { \
-        DynArray##Type res; \
-        res.data = (Type*)malloc(sizeof(Type) * size); \
-        if (res.data == NULL) { \
-            puts("No mem"); \
-            fflush(stdout); \
-            exit(1); \
-        } \
-        res.len = 0; \
-        res.cap = size; \
-        return res; \
-    } \
-    void Append(DynArray##Type* array, Type value) { \
-        if (array->len >= array->cap) { \
-            array->cap *= 2; \
-            Type*new_data = (Type*)realloc(array->data, array->cap * sizeof(Type)); \
-            if (new_data == NULL) { \
-                puts("No mem"); \
-                fflush(stdout); \
-                exit(1); \
-            } \
-            array->data = new_data; \
-        } \
-        array->data[array->len] = value; \
-        array->len += 1; \
-    } \
-    Type At(DynArray##Type* array, int index) { \
-        assert(("array bound check", index < array->len && index >= 0)); \
-        return array->data[index]; \
-    } \
-    int DynArrayComp##Type(const void* a, const void* b) { \
-        const Type arg1 = *(const Type*)a; \
-        const Type arg2 = *(const Type*)b; \
-        if (arg1 < arg2) return -1; \
-        if (arg1 > arg2) return 1; \
-        return 0; \
-    } \
-    void Sort(DynArray##Type* array) { \
-        qsort((void*)array->data, array->len, sizeof(Type), DynArrayComp##Type); \
-    } \
-
-
-#define AbsImpl(Type) \
-    Type Abs(Type value) { \
-        return value < 0 ? -value : value; \
-    } \
-
-DynArrayImpl(int64_t)
-AbsImpl(int64_t)
-*/
-
