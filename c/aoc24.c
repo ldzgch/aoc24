@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <math.h>
+#include <stdbool.h>
 
 #define GB_IMPLEMENTATION
 #include "gb.h"
@@ -602,7 +603,7 @@ void DAY(7, f, a, part1) {
                 }
             }
         } else {
-            i32 num_variations = pow(3, (nums_count - 1));
+            i32 num_variations = pow_i64(3, (nums_count - 1));
             for (i32 variation = 0;variation < num_variations;variation++) {
                 i64 res = nums[0];
                 for (i32 j = 1;j < nums_count;j++) {
@@ -840,7 +841,7 @@ int main(int argc, char**argv) {
     f64 ex_nr = gb_str_to_f64(argv[1], NULL);
 
     int ex_nr_int = (int)gb__floor64(ex_nr);
-    b32 part = ex_nr > ex_nr_int ? FALSE : TRUE;
+    b32 part = ex_nr > ex_nr_int ? false : true;
 
     #define CASE_DAY(n, datapath) \
         case n: { \
