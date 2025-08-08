@@ -832,6 +832,100 @@ void DAY(9, f, a, part1) {
     printf("%lli", checksum);
 }
 
+void DAY(10, f, a, part1) {
+    fseek(f, 0, SEEK_END);
+    i64 file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    i8* data = malloc(file_len);
+    fread(data, 1, file_len, f);
+
+    i32 idx = 0;
+    for(;idx < file_len;idx++)
+        if (data[idx] == '\n') break;
+
+    i32 w, h;
+    w = idx;
+    h = file_len / idx;
+
+    i32 total_score = 0;
+
+    i8* nine_visited = malloc(file_len);
+    FOR(i, 0, file_len) data[i] -= '0';
+
+    FOR(i, 0, file_len) {
+        if (data[i] == 0) {
+            // printf("start dfs %i \n", i);
+
+            // implicit procedural DFS
+            i32 pos_stack[10];
+            i32 move_stack[10];
+            i32 stack_idx = -1;
+
+            FOR(i, 0, file_len) nine_visited[i] = false;
+
+            stack_idx += 1;
+            pos_stack[stack_idx] = i;
+            move_stack[stack_idx] = 0;
+
+            while (stack_idx >= 0) {
+                i32 pos = pos_stack[stack_idx];
+                i32 move = move_stack[stack_idx];
+
+                i32 iw = pos % (w + 1), ih = pos / (w+1);
+
+                // printf("dfs %i %i \n", ih, iw);
+
+                i32 wmove[4] = {0, 0, -1, 1};
+                i32 hmove[4] = {-1, 1, 0, 0};
+
+                for(;move < 4;move++) {
+                    i32 neww = iw + wmove[move];
+                    i32 newh = ih + hmove[move];
+
+                    if (neww < 0 || neww >= w) continue;
+                    if (newh < 0 || newh >= h) continue;
+
+                    i32 newpos = newh * (w+1) + neww;
+
+                    if (data[newpos] == 9 && data[pos] == 8) {
+                        // printf("dfs 9 at  %i %i \n", newh, neww);
+
+                        if (part1) {
+                            if (!nine_visited[newpos]) {
+                                total_score += 1;
+                                nine_visited[newpos] = true;
+                            }
+                            continue;
+                        } else {
+                            total_score += 1;
+                        }
+                    }
+
+
+                    if (data[newpos] != data[pos] + 1) continue;
+
+                    stack_idx += 1;
+                    pos_stack[stack_idx] = newpos;
+                    move_stack[stack_idx] = 0;
+
+                    move_stack[stack_idx - 1] = move + 1;
+                    goto lbl_next_dfs_loop;
+                }
+
+                stack_idx -= 1;
+
+lbl_next_dfs_loop:
+;
+            }
+
+        }
+    }
+
+    // printf("%i %i \n", h, w);
+    printf("%i \n", total_score);
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -865,6 +959,7 @@ int main(int argc, char**argv) {
     CASE_DAY(7, "../data/data7.txt")
     CASE_DAY(8, "../data/data8.txt")
     CASE_DAY(9, "../data/data9.txt")
+    CASE_DAY(10, "../data/data10.txt")
     default:
         puts("Bad exercise number");
         return 1;
