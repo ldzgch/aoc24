@@ -746,25 +746,89 @@ void DAY(9, f, a, part1) {
     gbString data = read_entire_file(f, a);
     i32 data_len = gb_string_length(data);
 
+    i64 num_file_blocks = 0;
     i64 num_blocks = 0;
     FOR(i, 0, data_len) {
-        num_blocks += data[i];
+        i8 num_this_block = data[i] - '0';
+        data[i] = num_this_block;
+
+        num_blocks += num_this_block;
+        if (i%2 == 0)
+            num_file_blocks += num_this_block;
     }
-    i32 first_free_idx = 1;
-    i32 last_file_idx = data_len - ((data_len % 2 == 0) ? 2 : 1);
 
-    while (first_free_idx < last_file_idx) {
-        i32 file_num_blocks = data[last_file_idx];
-        i32 free_num_blocks = data[first_free_idx];
+    i32* blocks = gb_alloc(a, num_blocks * sizeof(i32));
 
-        if (
-        free_num_blocks < file_num_blocks) {
+    i32 block_pos = 0;
+    FOR(i, 0, data_len) {
+        i32 file_id = (i % 2 == 0) ? (i / 2) : -1;
+        FOR(j, 0, data[i]) {
+            blocks[block_pos] = file_id;
+            block_pos += 1;
+        }
+    }
 
+    if (part1) {
+        i32 first_free_block = 0;
+        i32 last_file_block = num_blocks - 1;
+
+        while (first_free_block < last_file_block) {
+            while(blocks[last_file_block] == -1) last_file_block--;
+            while(blocks[first_free_block] != -1) first_free_block++;
+
+            if (first_free_block >= last_file_block)
+                break;
+
+            blocks[first_free_block] = blocks[last_file_block];
+            blocks[last_file_block] = -1;
+        }
+    } else {
+        i32 first_free_idx = 1;
+        i32 last_file_idx = data_len - ((data_len % 2 == 0) ? 2 : 1);
+
+        i8* data_after = gb_alloc(a, data_len);
+        gb_memcopy(data_after, data, data_len);
+
+        for(i32 file_idx = last_file_idx;file_idx > 0;file_idx -= 2) {
+            i8 file_size = data[file_idx];
+
+            for(i32 free_idx = 1;free_idx < file_idx;free_idx += 2) {
+                if (data_after[free_idx] >= file_size) {
+
+                    i32 free_block = 0;
+                    for(i32 i = 0;i < free_idx;i += 1) {
+                        free_block += data_after[i];
+                    }
+                    i32 file_block = 0;
+                    for(i32 i = 0;i < file_idx;i += 1) {
+                        file_block += data[i];
+                    }
+
+                    data_after[free_idx] -= file_size;
+                    data_after[free_idx - 1] += file_size;
+
+                    data_after[file_idx] = 0;
+                    data_after[file_idx - 1] += file_size;
+
+                    FOR(k, 0, file_size) {
+                        blocks[k + free_block] = blocks[k + file_block];
+                        GB_ASSERT(blocks[k + file_block] != -1);
+                        blocks[k + file_block] = -1;
+                    }
+                    break;
+                }
+            }
         }
 
     }
 
-    printf("%lli", num_blocks);
+    i64 checksum = 0;
+    FOR(i, 0, num_blocks) {
+        if (blocks[i] == -1) continue;
+        checksum += i * cast(i64)blocks[i];
+    }
+
+    printf("%lli", checksum);
 }
 
 int main(int argc, char**argv) {
@@ -781,6 +845,10 @@ int main(int argc, char**argv) {
     #define CASE_DAY(n, datapath) \
         case n: { \
         FILE* f = fopen(datapath, "r"); \
+        if (f == NULL) { \
+            puts("Data file not found"); \
+            return 1; \
+        } \
         day##n(f, a, part); \
         fclose(f); \
         } \
@@ -802,5 +870,6 @@ int main(int argc, char**argv) {
     }
     #undef CASE_DAY
 
+    putchar('\n');
     return 0;
 }
