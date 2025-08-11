@@ -926,6 +926,60 @@ lbl_next_dfs_loop:
     printf("%i \n", total_score);
 }
 
+void DAY(11, f, a, part1) {
+    gbArray(u64) stones;
+    gbArray(u64) next_stones;
+    gb_array_init(stones, a);
+    gb_array_init(next_stones, a);
+
+    while(!feof(f)) {
+        i32 num;
+        fscanf(f, "%i", &num);
+        gb_array_append(stones, num);
+    }
+
+    // FOR(i, 0, gb_array_count(stones)) printf("%i ", stones[i]);
+    i32 num_blinks = part1 ? 25 : 75;
+
+    FOR(time, 0, num_blinks) {
+        printf("time %i, num stones %i\n", time, gb_array_count(stones));
+
+        FOR(idx, 0, gb_array_count(stones)) {
+            u64 stone = stones[idx];
+            if (stone == 0) {
+                gb_array_append(next_stones, 1);
+                continue;
+            }
+
+            u64 pow_of_ten = 10;
+            u64 num_digits = 1;
+            while (stone >= pow_of_ten) {
+                pow_of_ten *= 10;
+                num_digits += 1;
+            }
+
+            if (num_digits % 2 == 0) {
+                u64 div = pow_i64(10, num_digits / 2);
+
+                u64 left = stone / div;
+                u64 right = stone % div;
+
+                gb_array_append(next_stones, left);
+                gb_array_append(next_stones, right);
+
+                continue;
+            }
+
+            gb_array_append(next_stones, stone * 2024);
+        }
+
+        gb_swap(gbArray(u64), stones, next_stones);
+        gb_array_clear(next_stones);
+    }
+
+    printf("%i", gb_array_count(stones));
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -960,6 +1014,7 @@ int main(int argc, char**argv) {
     CASE_DAY(8, "../data/data8.txt")
     CASE_DAY(9, "../data/data9.txt")
     CASE_DAY(10, "../data/data10.txt")
+    CASE_DAY(11, "../data/data11.txt")
     default:
         puts("Bad exercise number");
         return 1;
