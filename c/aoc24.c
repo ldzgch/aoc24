@@ -43,6 +43,60 @@ gbString read_entire_file(FILE* f, gbAllocator a) {
     return data;
 }
 
+typedef struct _matrix {
+    i8* buf;
+    i32 h, w;
+} matrix;
+
+matrix matrix_load_from_file(FILE* f, gbAllocator a) {
+    // stride calc assumes file in binary mode!
+    fseek(f, 0, SEEK_END);
+    i64 file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    i8* data = gb_alloc(a, file_len);
+    fread(data, 1, file_len, f);
+
+    i32 w, h;
+
+    i32 stride = 0;
+    for(;stride < file_len;stride++)
+        if (data[stride] == 0xA) {
+            if (stride > 0 && data[stride - 1] == 0xD)
+                w = stride - 1;
+            else
+                w = stride;
+            break;
+        };
+    stride += 1;
+
+    h = (data[file_len - 1] != 0xA) ? // if end misses newline, pretend like it does exist
+        (file_len+1) / (stride) :
+        file_len / (stride);
+
+    // remove line endings
+    i32 dest = 0;
+    FOR(i, 0, file_len) {
+        if (data[i] == 0xA || data[i] == 0xD) continue;
+        data[dest] = data[i];
+        dest += 1;
+    }
+    matrix res = {data, h, w};
+    return res;
+}
+
+matrix matrix_make(i32 h, i32 w, gbAllocator a) {
+    i8* data = gb_alloc(a, h * w);
+    matrix res = {data, h, w};
+    return res;
+}
+
+#define matrix_hw(m, row, col) m.buf[(row) * m.w + (col)]
+#define matrix_pos(m, pos) m.buf[pos]
+#define matrix_hw_to_pos(m, row, col) ((row) * m.w + (col))
+
+#define gb_array_last(array) array[gb_array_count(array) - 1]
+
 #define DAY(number, file, alloc, part) day##number(FILE * file, gbAllocator a, b32 part)
 
 void DAY(1, f, a, part1) {
@@ -926,23 +980,12 @@ lbl_next_dfs_loop:
     printf("%i \n", total_score);
 }
 
-void DAY(11, f, a, part1) {
-    gbArray(u64) stones;
-    gbArray(u64) next_stones;
-    gb_array_init(stones, a);
-    gb_array_init(next_stones, a);
+void day11_expand25(gbArray(u64)* ptr_stones, gbArray(u64)* ptr_next_stones) {
+    gbArray(u64) stones = *ptr_stones;
+    gbArray(u64) next_stones = *ptr_next_stones;
 
-    while(!feof(f)) {
-        i32 num;
-        fscanf(f, "%i", &num);
-        gb_array_append(stones, num);
-    }
-
-    // FOR(i, 0, gb_array_count(stones)) printf("%i ", stones[i]);
-    i32 num_blinks = part1 ? 25 : 75;
-
-    FOR(time, 0, num_blinks) {
-        printf("time %i, num stones %i\n", time, gb_array_count(stones));
+    FOR(time, 0, 25) {
+        //printf("time %i, num stones %i\n", time, gb_array_count(stones));
 
         FOR(idx, 0, gb_array_count(stones)) {
             u64 stone = stones[idx];
@@ -977,7 +1020,305 @@ void DAY(11, f, a, part1) {
         gb_array_clear(next_stones);
     }
 
-    printf("%i", gb_array_count(stones));
+    *ptr_stones = stones;
+    *ptr_next_stones = next_stones;
+}
+
+u64 day11_expand_to_3digits(gbArray(u64)* ptr_stones, gbArray(u64)* ptr_next_stones) {
+    gbArray(u64) stones = *ptr_stones;
+    gbArray(u64) next_stones = *ptr_next_stones;
+
+    u64 depth = 0;
+    while (true) {
+        b32 all_digits = true;
+        FOR(idx, 0, gb_array_count(stones)) {
+            u64 stone = stones[idx];
+
+            u64 pow_of_ten = 10;
+            u64 num_digits = 1;
+            while (stone >= pow_of_ten) {
+                pow_of_ten *= 10;
+                num_digits += 1;
+            }
+
+            if (num_digits <= 3 && depth != 0)
+                continue;
+            else
+                all_digits = false;
+
+            if (num_digits % 2 == 0) {
+                u64 div = pow_i64(10, num_digits / 2);
+
+                u64 left = stone / div;
+                u64 right = stone % div;
+
+                gb_array_append(next_stones, left);
+                gb_array_append(next_stones, right);
+
+                continue;
+            }
+
+            gb_array_append(next_stones, stone * 2024);
+        }
+
+        gb_swap(gbArray(u64), stones, next_stones);
+        gb_array_clear(next_stones);
+
+        depth += 1;
+        if (all_digits)
+            break;
+    }
+
+    *ptr_stones = stones;
+    *ptr_next_stones = next_stones;
+
+    return depth;
+}
+
+void DAY(11, f, a, part1) {
+    gbArray(u64) input_stones;
+    gb_array_init(input_stones, a);
+
+    gbArray(u64) stones;
+    gb_array_init(stones, a);
+
+    gbArray(u64) next_stones;
+    gb_array_init(next_stones, a);
+
+    while(!feof(f)) {
+        i32 num;
+        fscanf(f, "%i", &num);
+        gb_array_append(input_stones, num);
+    }
+
+    u64 num_count = 0;
+    if (part1) {
+        FOR(i, 0, gb_array_count(input_stones)) {
+            gb_array_clear(stones);
+            gb_array_clear(next_stones);
+
+            gb_array_append(stones, input_stones[i]);
+
+            day11_expand25(&stones, &next_stones);
+
+            num_count += gb_array_count(stones);
+        }
+    } else {
+        FOR(i, 0, gb_array_count(input_stones)) {
+            gb_array_clear(stones);
+            gb_array_clear(next_stones);
+
+            gb_array_append(stones, input_stones[i]);
+
+            u64 depth = day11_expand_to_3digits(&stones, &next_stones);
+            printf("depth %lli\n", depth);
+        }
+    }
+    printf("%lli", num_count);
+}
+
+typedef struct _day12side {
+    i32 pos1, pos2;
+    i32 move;
+} Day12Side;
+
+Day12Side make_side(i32 y, i32 x, i32 move, i32 data_w) {
+    i32 pos1, pos2;
+    i32 sides_w = data_w + 1; // side positions are between data positions, so there is one more
+    i32 pos = y * sides_w + x;
+    switch (move) {
+    case 0: // down
+        pos1 = pos;
+        pos2 = pos + 1;
+        break;
+    case 1: // up
+        pos1 = pos + sides_w;
+        pos2 = pos + sides_w + 1;
+        break;
+    case 2: // left
+        pos1 = pos;
+        pos2 = pos + sides_w;
+        break;
+    case 3: // right
+        pos1 = pos + 1;
+        pos2 = pos + sides_w + 1;
+        break;
+    }
+    Day12Side s = {pos1, pos2, move};
+    return s;
+}
+
+void DAY(12, f, a, part1) {
+    matrix data = matrix_load_from_file(f, a);
+
+    printf("h %i, w %i\n", data.h, data.w);
+
+    matrix visited = matrix_make(data.h, data.w, a);
+    FOR(i, 0, data.h) FOR(j, 0, data.w) matrix_hw(visited, i, j) = false;
+    
+    i64 price = 0;
+
+    gbArray(i32) pos_stack; gb_array_init(pos_stack, a);
+    gbArray(i32) move_stack; gb_array_init(move_stack, a);
+    gbArray(Day12Side) sides; gb_array_init(sides, a);
+
+    FOR(row, 0, data.h) FOR(col, 0, data.w) {
+        if (matrix_hw(visited, row, col)) continue;
+
+        i32 area = 0;
+        i32 perimeter = 0;
+        i32 num_sides = 0;
+
+        i8 type = matrix_hw(data, row, col);
+
+
+        // implicit procedural DFS
+        gb_array_clear(pos_stack);
+        gb_array_clear(move_stack);
+        gb_array_clear(sides);
+
+        gb_array_append(pos_stack, matrix_hw_to_pos(data, row, col));
+        gb_array_append(move_stack, 0);
+
+        while (gb_array_count(pos_stack) > 0) {
+
+            i32 pos = gb_array_last(pos_stack);
+            i32 move = gb_array_last(move_stack);
+
+            if (!matrix_pos(visited, pos)) {
+                matrix_pos(visited, pos) = true;
+                area += 1;
+            }
+
+            i32 iw = pos % data.w, ih = pos / data.w;
+
+            // printf("dfs %i %i \n", ih, iw);
+
+            i32 wmove[4] = {0, 0, -1, 1};
+            i32 hmove[4] = {-1, 1, 0, 0};
+
+            for(;move < 4;move++) {
+                i32 neww = iw + wmove[move];
+                i32 newh = ih + hmove[move];
+
+                if (neww < 0 || neww >= data.w ||
+                    newh < 0 || newh >= data.h) {
+                
+                    perimeter += 1;
+                    if (!part1) {
+                        gb_array_append(sides, make_side(ih, iw, move, data.w));
+                    }
+                    continue;
+                }
+
+                i32 newpos = matrix_hw_to_pos(data, newh, neww);
+
+                if (matrix_pos(data, newpos) != type) {
+                    perimeter += 1;
+                    if (!part1) {
+                        gb_array_append(sides, make_side(ih, iw, move, data.w));
+                    }
+                    continue;
+                }
+                if (matrix_pos(visited, newpos)) continue;
+
+
+                gb_array_last(move_stack) = move + 1;
+
+                gb_array_append(pos_stack, newpos);
+                gb_array_append(move_stack, 0);
+
+                goto lbl_next_dfs_loop;
+            }
+
+            gb_array_pop(pos_stack);
+            gb_array_pop(move_stack);
+
+lbl_next_dfs_loop:
+;
+        }
+
+        b8* sides_visited = gb_alloc(a, gb_array_count(sides));
+        FOR(i, 0, gb_array_count(sides)) sides_visited[i] = false;
+        
+        b8 do_print = false; //  (type == 'R') && (area == 139);
+        
+        FOR(i, 0, gb_array_count(sides)) {
+            if (sides_visited[i]) continue;
+            i32 curr = i;
+            i32 curr_pos = sides[curr].pos2;
+            
+            i32 start_pos = sides[curr].pos1;
+
+            i32 curr_move = sides[curr].move;
+            num_sides += 1;
+            if (do_print) {
+                printf("start and inc\n");
+            }
+            
+            while (!sides_visited[curr]) {
+                sides_visited[curr] = true;
+
+                if (do_print) {
+                    printf("\tpos1 %i, pos2 %i, move %i\n", sides[curr].pos1, sides[curr].pos2, curr_move);
+                }
+
+                
+                FOR(j, 0, gb_array_count(sides)) {
+                    if (sides_visited[j]) continue;
+                    
+
+                    // sides are not compatible with the opposite
+                    #define IsNotCompatible(move1, move2) \
+                        ((move1 == 0 && move2 == 1) || \
+                        (move1 == 1 && move2 == 0) || \
+                        (move1 == 2 && move2 == 3) || \
+                        (move1 == 3 && move2 == 2)) \
+
+                    
+                        
+                    #define IsNextSide(pos_to_check, pos_to_go_next) \
+                        if (curr_pos == pos_to_check) { \
+                            if (IsNotCompatible(curr_move, sides[j].move)) { \
+                                printf("not compat\n"); \
+                                continue; \
+                            } \
+                            curr = j; \
+                            curr_pos = pos_to_go_next; \
+                            if (curr_move != sides[j].move) { \
+                                num_sides += 1; \
+                                if (do_print) { \
+                                    printf("inc\n"); \
+                                } \
+                            } \
+                            curr_move = sides[j].move; \
+                            break; \
+                        } \
+
+                    IsNextSide(sides[j].pos1, sides[j].pos2);
+                    IsNextSide(sides[j].pos2, sides[j].pos1);
+                        
+                    #undef IsNextSide
+                    #undef IsNotCompatible
+
+                }
+            }
+            b8 end_is_start = curr_pos == start_pos;
+            if (!end_is_start)
+                printf("end not start");
+
+        }
+        gb_free(a, sides_visited);
+
+        if (part1) {
+            printf("type %c, area %i, perimeter %i\n", type, area, perimeter);
+            price += area * perimeter;
+        } else {
+            printf("type %c, area %i, nsides %i\n", type, area, num_sides);
+            price += area * num_sides;
+        }
+    }
+    printf("%lli", price);
 }
 
 int main(int argc, char**argv) {
@@ -987,13 +1328,13 @@ int main(int argc, char**argv) {
     }
     gbAllocator a = gb_heap_allocator();
     f64 ex_nr = gb_str_to_f64(argv[1], NULL);
-
+    
     int ex_nr_int = (int)gb__floor64(ex_nr);
     b32 part = ex_nr > ex_nr_int ? false : true;
 
     #define CASE_DAY(n, datapath) \
         case n: { \
-        FILE* f = fopen(datapath, "r"); \
+        FILE* f = fopen(datapath, "rb"); \
         if (f == NULL) { \
             puts("Data file not found"); \
             return 1; \
@@ -1015,6 +1356,7 @@ int main(int argc, char**argv) {
     CASE_DAY(9, "../data/data9.txt")
     CASE_DAY(10, "../data/data10.txt")
     CASE_DAY(11, "../data/data11.txt")
+    CASE_DAY(12, "../data/data12.txt")
     default:
         puts("Bad exercise number");
         return 1;
