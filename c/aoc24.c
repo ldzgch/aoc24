@@ -1321,6 +1321,44 @@ lbl_next_dfs_loop:
     printf("%lli", price);
 }
 
+void DAY(13, f, a, part1) {
+    i64 total_price = 0;
+    while (!feof(f)) {
+        i64 lowest_price = (1LL << 60);
+
+        i64 ax, ay;
+        fscanf(f, "Button A: X+%lli, Y+%lli\n", &ax, &ay);
+        i64 bx, by;
+        fscanf(f, "Button B: X+%lli, Y+%lli\n", &bx, &by);
+        i64 px, py;
+        fscanf(f, "Prize: X=%lli, Y=%lli\n", &px, &py);
+        if (!part1){
+            px += 10000000000000;
+            py += 10000000000000;
+        }
+
+        f64 k1 =    cast(f64)(by * px - bx * py) / 
+                    cast(f64)(ax * by - bx * ay);
+        
+        f64 k2 =    cast(f64)(ax * py - ay * px) / 
+                    cast(f64)(ax * by - bx * ay);
+        
+        if (lowest_price == (1LL << 60)) {
+            lowest_price = 0;
+        } 
+        i64 ksolution = (k1 >= 0.0 && k2 >= 0.0 && (gb__floor64(k1) == k1) && (gb__floor64(k2) == k2)) ?
+            cast(i64)(gb__floor64(3 * k1 + k2)) : 0;
+
+        total_price += ksolution;
+    }
+    printf("%lli", total_price);
+}
+
+void DAY(14, f, a, part1) {
+
+
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -1357,6 +1395,7 @@ int main(int argc, char**argv) {
     CASE_DAY(10, "../data/data10.txt")
     CASE_DAY(11, "../data/data11.txt")
     CASE_DAY(12, "../data/data12.txt")
+    CASE_DAY(13, "../data/data13.txt")
     default:
         puts("Bad exercise number");
         return 1;
