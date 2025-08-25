@@ -5,6 +5,9 @@
 #define GB_IMPLEMENTATION
 #include "gb.h"
 
+#define MYLIB_IMPLEMENTATION
+#include "mylib.h"
+
 
 #define FOR(idx, start, end) for(i32 idx = (start);idx < (end);idx += 1)
 // utils
@@ -43,57 +46,7 @@ gbString read_entire_file(FILE* f, gbAllocator a) {
     return data;
 }
 
-typedef struct _matrix {
-    i8* buf;
-    i32 h, w;
-} matrix;
 
-matrix matrix_load_from_file(FILE* f, gbAllocator a) {
-    // stride calc assumes file in binary mode!
-    fseek(f, 0, SEEK_END);
-    i64 file_len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    i8* data = gb_alloc(a, file_len);
-    fread(data, 1, file_len, f);
-
-    i32 w, h;
-
-    i32 stride = 0;
-    for(;stride < file_len;stride++)
-        if (data[stride] == 0xA) {
-            if (stride > 0 && data[stride - 1] == 0xD)
-                w = stride - 1;
-            else
-                w = stride;
-            break;
-        };
-    stride += 1;
-
-    h = (data[file_len - 1] != 0xA) ? // if end misses newline, pretend like it does exist
-        (file_len+1) / (stride) :
-        file_len / (stride);
-
-    // remove line endings
-    i32 dest = 0;
-    FOR(i, 0, file_len) {
-        if (data[i] == 0xA || data[i] == 0xD) continue;
-        data[dest] = data[i];
-        dest += 1;
-    }
-    matrix res = {data, h, w};
-    return res;
-}
-
-matrix matrix_make(i32 h, i32 w, gbAllocator a) {
-    i8* data = gb_alloc(a, h * w);
-    matrix res = {data, h, w};
-    return res;
-}
-
-#define matrix_hw(m, row, col) m.buf[(row) * m.w + (col)]
-#define matrix_pos(m, pos) m.buf[pos]
-#define matrix_hw_to_pos(m, row, col) ((row) * m.w + (col))
 
 #define gb_array_last(array) array[gb_array_count(array) - 1]
 
@@ -1149,12 +1102,14 @@ Day12Side make_side(i32 y, i32 x, i32 move, i32 data_w) {
 }
 
 void DAY(12, f, a, part1) {
-    matrix data = matrix_load_from_file(f, a);
+    matrix(i8) data = matrix_load_from_file(f, a);
+    i32 dh = matrix_rows(data);
+    i32 dw = matrix_cols(data);
 
-    printf("h %i, w %i\n", data.h, data.w);
+    printf("h %i, w %i\n", dh, dw);
 
-    matrix visited = matrix_make(data.h, data.w, a);
-    FOR(i, 0, data.h) FOR(j, 0, data.w) matrix_hw(visited, i, j) = false;
+    matrix_make_like(visited, b8, a, data);
+    FOR(i, 0, dh) FOR(j, 0, dw) matrix_at(visited, i, j) = false;
     
     i64 price = 0;
 
@@ -1162,14 +1117,14 @@ void DAY(12, f, a, part1) {
     gbArray(i32) move_stack; gb_array_init(move_stack, a);
     gbArray(Day12Side) sides; gb_array_init(sides, a);
 
-    FOR(row, 0, data.h) FOR(col, 0, data.w) {
-        if (matrix_hw(visited, row, col)) continue;
+    FOR(row, 0, dh) FOR(col, 0, dw) {
+        if (matrix_at(visited, row, col)) continue;
 
         i32 area = 0;
         i32 perimeter = 0;
         i32 num_sides = 0;
 
-        i8 type = matrix_hw(data, row, col);
+        i8 type = matrix_at(data, row, col);
 
 
         // implicit procedural DFS
@@ -1177,7 +1132,7 @@ void DAY(12, f, a, part1) {
         gb_array_clear(move_stack);
         gb_array_clear(sides);
 
-        gb_array_append(pos_stack, matrix_hw_to_pos(data, row, col));
+        gb_array_append(pos_stack, matrix_idx(data, row, col));
         gb_array_append(move_stack, 0);
 
         while (gb_array_count(pos_stack) > 0) {
@@ -1185,12 +1140,12 @@ void DAY(12, f, a, part1) {
             i32 pos = gb_array_last(pos_stack);
             i32 move = gb_array_last(move_stack);
 
-            if (!matrix_pos(visited, pos)) {
-                matrix_pos(visited, pos) = true;
+            if (!visited[pos]) {
+                visited[pos] = true;
                 area += 1;
             }
 
-            i32 iw = pos % data.w, ih = pos / data.w;
+            i32 iw = pos % dw, ih = pos / dw;
 
             // printf("dfs %i %i \n", ih, iw);
 
@@ -1201,26 +1156,26 @@ void DAY(12, f, a, part1) {
                 i32 neww = iw + wmove[move];
                 i32 newh = ih + hmove[move];
 
-                if (neww < 0 || neww >= data.w ||
-                    newh < 0 || newh >= data.h) {
+                if (neww < 0 || neww >= dw ||
+                    newh < 0 || newh >= dh) {
                 
                     perimeter += 1;
                     if (!part1) {
-                        gb_array_append(sides, make_side(ih, iw, move, data.w));
+                        gb_array_append(sides, make_side(ih, iw, move, dw));
                     }
                     continue;
                 }
 
-                i32 newpos = matrix_hw_to_pos(data, newh, neww);
+                i32 newpos = matrix_idx(data, newh, neww);
 
-                if (matrix_pos(data, newpos) != type) {
+                if (data[newpos] != type) {
                     perimeter += 1;
                     if (!part1) {
-                        gb_array_append(sides, make_side(ih, iw, move, data.w));
+                        gb_array_append(sides, make_side(ih, iw, move, dw));
                     }
                     continue;
                 }
-                if (matrix_pos(visited, newpos)) continue;
+                if (visited[newpos]) continue;
 
 
                 gb_array_last(move_stack) = move + 1;
@@ -1354,9 +1309,301 @@ void DAY(13, f, a, part1) {
     printf("%lli", total_price);
 }
 
+void day14_printstate(gbArray(i32) xpos, gbArray(i32) ypos, gbAllocator a) {
+    matrix_make(data, i8, a, 103, 101 + 1);
+    matrix_fill(data, '.');
+    FOR(i, 0, matrix_rows(data)) matrix_at(data, i, 101) = '\n';
+
+    FOR(i, 0, gb_array_count(xpos))
+        matrix_at(data, ypos[i], xpos[i]) = 'x';
+
+    fwrite(data, 103 * (101 + 1), 1, stdout);
+    matrix_delete(data, a);
+}
+
+i32 day14_dfs(matrix(i8) data, i32 x, i32 y) {
+    if (x < 0 || x >= matrix_rows(data) ||
+        y < 0 || y >= matrix_cols(data) ||
+        matrix_at(data, x, y) != 'x')
+            return 0;
+    matrix_at(data, x, y) = '_';
+
+    return 
+        day14_dfs(data, x, y+1) +
+        day14_dfs(data, x, y-1) +
+        day14_dfs(data, x+1, y) +
+        day14_dfs(data, x-1, y) +
+
+        day14_dfs(data, x-1, y-1) +
+        day14_dfs(data, x-1, y+1) +
+        day14_dfs(data, x+1, y-1) +
+        day14_dfs(data, x+1, y+1) +
+        1;
+}
+
+i32 day14_largest_cluster(gbArray(i32) xpos, gbArray(i32) ypos, gbAllocator a) {
+    matrix_make(data, i8, a, 103, 101);
+    matrix_fill(data, '.');
+    FOR(i, 0, gb_array_count(xpos))
+        matrix_at(data, ypos[i], xpos[i]) = 'x';
+
+    i32 largest_cluster = 0;
+    
+    FOR(i, 0, matrix_rows(data)) FOR(j, 0, matrix_cols(data)) {
+        i32 this_cluster = day14_dfs(data, i, j);
+        if (largest_cluster < this_cluster)
+            largest_cluster = this_cluster;
+    }
+    
+    matrix_delete(data, a);
+    return largest_cluster;
+}
+
 void DAY(14, f, a, part1) {
+    gbArray(i32) xpos; gb_array_init(xpos, a);
+    gbArray(i32) ypos; gb_array_init(ypos, a);
+
+    gbArray(i32) xvel; gb_array_init(xvel, a);
+    gbArray(i32) yvel; gb_array_init(yvel, a);
+
+    while (!feof(f)) {
+        i32 px, py, vx, vy;
+        fscanf(f, "p=%i,%i v=%i,%i\n", &px, &py, &vx, &vy);
+
+        gb_array_append(xpos, px);
+        gb_array_append(ypos, py);
+
+        gb_array_append(xvel, vx);
+        gb_array_append(yvel, vy);
+
+    }
+
+    i32 n_iter = (part1) ? 100 : 10000;
+    FOR(i, 0, n_iter) {
+        FOR(r, 0, gb_array_count(xpos)) {
+            i32 newx = (xpos[r] + xvel[r]);
+            if (newx < 0) newx += 101;
+            if (newx >= 101) newx -= 101;
+            xpos[r] = newx;
+
+            i32 newy = (ypos[r] + yvel[r]);
+            if (newy < 0) newy += 103;
+            if (newy >= 103) newy -= 103;
+            ypos[r] = newy;
+        }
+        
+        if (!part1) {
+            i32 lc = day14_largest_cluster(xpos, ypos, a);
+            if (lc > 35) {
+                
+                printf("lc %i after iter: %i\n", lc, i+1);
+                day14_printstate(xpos, ypos, a);
+            }
+        }
+    }
+    i32 q[4]; FOR(i, 0, 4) q[i] = 0;
+
+    FOR(r, 0, gb_array_count(xpos)) {
+        if (xpos[r] < 50 && ypos[r] < 51)
+            q[0] += 1;
+        if (xpos[r] > 50 && ypos[r] < 51)
+            q[1] += 1;
+        if (xpos[r] < 50 && ypos[r] > 51)
+            q[2] += 1;
+        if (xpos[r] > 50 && ypos[r] > 51)
+            q[3] += 1;
+    }
+    i64 safety = 1;
+    FOR(i, 0, 4) safety *= q[i];
+
+    printf("%lli", safety);
+}
+
+void day15_print(matrix(i8) data, i32 ry, i32 rx) {
+    i8 tmp = matrix_at(data, ry, rx);
+    matrix_at(data, ry, rx) = '@';
+    FOR(i, 0, matrix_rows(data)) {
+        fwrite(&matrix_at(data, i, 0), matrix_cols(data), 1, stdout);
+        puts("");
+    }
+    matrix_at(data, ry, rx) = tmp;
+}
+
+void op_step(i32 y, i32 x, i32* ny, i32* nx, i8 op) {
+    *ny = y;
+    *nx = x;
+    switch (op) {
+    case '^':
+        *ny -= 1;
+    break;
+    case 'v':
+        *ny += 1;
+    break;
+    case '<':
+        *nx -= 1;
+    break;
+    case '>':
+        *nx += 1;
+    break;
+    default:
+        GB_ASSERT(false);
+    }
+}
+
+typedef struct _day15_box {
+    i32 y; i32 x;
+} Day15Box;
+
+b8 day15_all_affected_boxes(matrix(i8) data, i32 y, i32 x, i8 op, gbArray(Day15Box)* boxes) {
+    // printf("(%i, %i)\n", y, x);
+    FOR(i, 0, gb_array_count(*boxes))
+        if ((*boxes)[i].y == y && (*boxes)[i].x == x)
+            return;
+
+    b8 not_box = matrix_at(data, y, x) == '.' || matrix_at(data, y, x) == '#';
+
+    if (not_box) {
+        return matrix_at(data, y, x) == '.';
+    }
+    b8 wide_box = matrix_at(data, y, x) == '[' || matrix_at(data, y, x) == ']';
+    b8 op_is_vert = op == '^' || op == 'v';
+    i32 ny = y, nx = x;
+    switch (op) {
+    case '^':
+        ny -= 1;
+    break;
+    case 'v':
+        ny += 1;
+    break;
+    case '<':
+        nx -= 1;
+    break;
+    case '>':
+        nx += 1;
+    break;
+    default:
+        GB_ASSERT(false);
+    }
+    b8 can_move = true;
+    
+    if (op_is_vert) {
+        if (matrix_at(data, y, x) == '[') {
+            can_move = can_move && day15_all_affected_boxes(data, ny, x+1, op, boxes);
+            Day15Box b = {y, x+1};
+            gb_array_append(*boxes, b);
+        } else if (matrix_at(data, y, x) == ']') {
+            can_move = can_move && day15_all_affected_boxes(data, ny, x-1, op, boxes);
+            Day15Box b = {y, x-1};
+            gb_array_append(*boxes, b);
+        }
+    }
+    can_move = can_move && day15_all_affected_boxes(data, ny, nx, op, boxes);
+    // put it after
+    Day15Box b = {y, x};
+    gb_array_append(*boxes, b);
+    
+    return can_move;
+}
+
+void DAY(15, f, a, part1) {
+    gbString s = read_entire_file(f, a);
+    i32 file_len = gb_string_length(s);
+    i32 matrix_len;
+    FOR(i, 0, file_len - 2) {
+        if ((s[i] == '\n' && s[i+1] == '\n') ||
+            (s[i] == '\n' && s[i+2] == '\n')) {
+            matrix_len = i;
+            break;
+        }
+    }
+    matrix(i8) data = matrix_load_from_buf(s, matrix_len, a);
+
+    i32 op_start = matrix_len;
+    while(s[op_start] == '\n' || s[op_start] == '\r')
+        op_start += 1;
+    i32 op_count = file_len - op_start;
+
+    if (!part1) {
+        matrix_make(tmp, i8, a, matrix_rows(data), matrix_cols(data) * 2);
+        FOR(i, 0, matrix_rows(data)) FOR(j, 0, matrix_cols(data)) {
+            if (matrix_at(data, i, j) == '#') {
+                matrix_at(tmp, i, 2 * j + 0) = '#';
+                matrix_at(tmp, i, 2 * j + 1) = '#';
+            }
+            if (matrix_at(data, i, j) == 'O') {
+                matrix_at(tmp, i, 2 * j + 0) = '[';
+                matrix_at(tmp, i, 2 * j + 1) = ']';
+            }
+            if (matrix_at(data, i, j) == '.') {
+                matrix_at(tmp, i, 2 * j + 0) = '.';
+                matrix_at(tmp, i, 2 * j + 1) = '.';
+            }
+            if (matrix_at(data, i, j) == '@') {
+                matrix_at(tmp, i, 2 * j + 0) = '@';
+                matrix_at(tmp, i, 2 * j + 1) = '.';
+            }
+        }
+        matrix_delete(data, a);
+        data = tmp;
+    }
+
+    i32 rows = matrix_rows(data);
+    i32 cols = matrix_cols(data);
+    i32 ry, rx;
+    FOR(i, 0, rows) FOR(j, 0, cols)
+        if (matrix_at(data, i, j) == '@') {
+            matrix_at(data, i, j) = '.';
+            ry = i; rx = j;
+            goto found_robot;
+        }
+found_robot:
+    ;
+//    day15_print(data, ry, rx);
+
+    gbArray(Day15Box) boxes; gb_array_init(boxes, a);
+    FOR(i, 0, op_count) {
+        i8 op = s[op_start + i];
+        if (op == '\n' || op == '\r') continue;
+        i32 nexty, nextx;
+        op_step(ry, rx, &nexty, &nextx, op);
+        b8 robot_can_move = matrix_at(data, nexty, nextx) != '#';
+
+        gb_array_clear(boxes);
+        b8 can_move = day15_all_affected_boxes(data, nexty, nextx, op, &boxes);
+/*
+        FOR(i, 0, gb_array_count(boxes))
+            printf("(%i, %i)\n", boxes[i].y, boxes[i].x);
+
+        printf("can move: %i\n", can_move);
+*/
+
+        if (can_move && robot_can_move) {
+            FOR(i, 0, gb_array_count(boxes)) {
+                i32 bny, bnx;
+                i32 by = boxes[i].y; i32 bx = boxes[i].x;
+                op_step(by, bx, &bny, &bnx, op);
+                matrix_at(data, bny, bnx) = matrix_at(data, by, bx);
+                matrix_at(data, by, bx) = '.';
+            }
+
+            ry = nexty;
+            rx = nextx;
+        }
+        /*
+        printf("%c\n", op);
+        day15_print(data, ry, rx);
+        */
+    }
 
 
+    i64 gps_sum = 0;
+    FOR(i, 0, rows) FOR(j, 0, cols) {
+        if (matrix_at(data, i, j) == 'O' || matrix_at(data, i, j) == '[')
+            gps_sum += 100 * i + j;
+        
+    }
+
+    printf("%lli", gps_sum);
 }
 
 int main(int argc, char**argv) {
@@ -1396,6 +1643,8 @@ int main(int argc, char**argv) {
     CASE_DAY(11, "../data/data11.txt")
     CASE_DAY(12, "../data/data12.txt")
     CASE_DAY(13, "../data/data13.txt")
+    CASE_DAY(14, "../data/data14.txt")
+    CASE_DAY(15, "../data/data15.txt")
     default:
         puts("Bad exercise number");
         return 1;
