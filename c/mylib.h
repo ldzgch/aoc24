@@ -4,6 +4,8 @@
 #include "gb.h" // header only
 #include "stdio.h"
 
+#define FOR(idx, start, end) for(i32 idx = (start);idx < (end);idx += 1)
+
 // note: matrix type is adapted from gb_array_*
 
 typedef struct _matrixHeader {
@@ -17,6 +19,7 @@ typedef struct _matrixHeader {
 
 #define matrix_rows(x)     (MATRIX_HEADER(x)->rows)
 #define matrix_cols(x)     (MATRIX_HEADER(x)->cols)
+#define matrix_size(x)     (matrix_rows(x) * matrix_cols(x))
 
 #define matrix_make(matrix_name, Type, alloc, num_rows, num_cols) \
 matrix(Type) matrix_name; \
@@ -58,6 +61,9 @@ do { \
 
 #define matrix_idx(x, row, col) ((row) * matrix_cols(x) + (col))
 
+#define matrix_for(it_rows, it_cols, x) FOR(it_rows, 0, matrix_rows(x)) FOR(it_cols, 0, matrix_cols(x))
+// #define matrix_for_rows(it, x) for(__typeof__(x) it = x;it < x + matrix_rows(x); it += matrix_cols(x))
+
 matrix(i8) matrix_load_from_file(FILE* f, gbAllocator a);
 matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a);
 matrix(i8) matrix_load_from_buf(i8* buf, i32 len, gbAllocator a);
@@ -87,11 +93,14 @@ matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a) {
 
     i32 w, h;
 
+    b8 is_crlf = false;
     i32 stride = 0;
     for(;stride < data_len;stride++)
         if (data[stride] == 0xA) {
-            if (stride > 0 && data[stride - 1] == 0xD)
+            if (stride > 0 && data[stride - 1] == 0xD) {
                 w = stride - 1;
+                is_crlf = true;
+            }
             else
                 w = stride;
             break;
@@ -99,7 +108,7 @@ matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a) {
     stride += 1;
 
     h = (data[data_len - 1] != 0xA) ? // if end misses newline, pretend like it does exist
-        (data_len+1) / (stride) :
+        (data_len + (is_crlf ? 2 : 1)) / (stride) :
         data_len / (stride);
 
     // remove line endings

@@ -9,7 +9,6 @@
 #include "mylib.h"
 
 
-#define FOR(idx, start, end) for(i32 idx = (start);idx < (end);idx += 1)
 // utils
 
 u32 read_u32(FILE* f) {
@@ -1458,7 +1457,7 @@ b8 day15_all_affected_boxes(matrix(i8) data, i32 y, i32 x, i8 op, gbArray(Day15B
     // printf("(%i, %i)\n", y, x);
     FOR(i, 0, gb_array_count(*boxes))
         if ((*boxes)[i].y == y && (*boxes)[i].x == x)
-            return;
+            return true;
 
     b8 not_box = matrix_at(data, y, x) == '.' || matrix_at(data, y, x) == '#';
 
@@ -1606,6 +1605,107 @@ found_robot:
     printf("%lli", gps_sum);
 }
 
+typedef struct _day16point {
+    i32 y; i32 x;
+} Day16Point;
+
+b8 point_eql(Day16Point p1, Day16Point p2) {
+    return p1.y == p2.y && p1.x == p2.x;
+}
+
+void day16_print(matrix(i8) data, gbArray(Day16Point) path, gbAllocator a) {
+    matrix_make_like(tmp, i8, a, data);
+
+    matrix_for(i, j, tmp) {
+        matrix_at(tmp, i, j) = matrix_at(data, i, j);
+    }
+
+    FOR(i, 0, gb_array_count(path)) {
+        matrix_at(tmp, path[i].y, path[i].x) = 'X';
+    }
+
+    FOR(i, 0, matrix_rows(tmp)) {
+        fwrite(&matrix_at(tmp, i, 0),  matrix_cols(tmp), 1, stdout);
+        printf("%i\n", i);
+    }
+
+    matrix_delete(tmp, a);
+}
+
+void DAY(16, f, a, part1) {
+    matrix(i8) data = matrix_load_from_file(f, a);
+    i32 rows =  matrix_rows(data);
+    i32 cols =  matrix_cols(data);
+
+    Day16Point S, E;
+    FOR(i, 0, rows) FOR(j, 0, cols) {
+        if (matrix_at(data, i, j) == 'S')
+            S = (Day16Point){i, j};
+        if (matrix_at(data, i, j) == 'E')
+            E = (Day16Point){i, j};
+    }
+
+    matrix_make_like(distance, i32, a, data);
+    FOR(i, 0, rows) FOR(j, 0, cols)
+        matrix_at(distance, i, j) = (1 << 20);
+        
+    // bfs
+    gbArray(Day16Point) pos_queue; gb_array_init(pos_queue, a);
+    i32 queue_first_elem = 0;
+    gbArray(i32) move_stack; gb_array_init(move_stack, a);
+    
+    gb_array_append(pos_queue, S);
+    matrix_at(distance, S.y, S.x) = 0;
+    while(gb_array_count(pos_queue) - queue_first_elem > 0) {
+        // pop front
+        Day16Point p = pos_queue[queue_first_elem];
+        queue_first_elem += 1;
+
+        i32 ymove[] = {-1, 1, 0, 0};
+        i32 xmove[] = {0, 0, -1, 1};
+        FOR(i, 0, 4) {
+            Day16Point np = {p.y + ymove[i], p.x + xmove[i]};
+            if (matrix_at(data, np.y, np.x) == '#' || matrix_at(distance, np.y, np.x) != (1 << 20))
+                continue;
+            gb_array_append(pos_queue, np);
+
+            // i32 dist_old = matrix_at(distance, np.y, np.x);
+            i32 dist_this_path = matrix_at(distance, p.y, p.x) + 1;
+
+            matrix_at(distance, np.y, np.x) = dist_this_path;
+        }
+
+    }
+
+    printf("dims: (%i, %i)\n", rows, cols);
+    printf("S: (%i, %i)\n", S.y, S.x);
+    printf("E: (%i, %i)\n", E.y, E.x);
+
+    gbArray(Day16Point) path; gb_array_init(path, a);
+
+    Day16Point p  = E;
+    while(!point_eql(p, S)) {
+        i32 curr_dist = matrix_at(distance, p.y, p.x);
+
+        i32 ymove[] = {-1, 1, 0, 0};
+        i32 xmove[] = {0, 0, -1, 1};
+        FOR(i, 0, 4) {
+            Day16Point np = {p.y + ymove[i], p.x + xmove[i]};
+            if (matrix_at(data, np.y, np.x) == '#' || matrix_at(distance, np.y, np.x) == (1 << 20))
+                continue;
+            if (curr_dist == matrix_at(distance, np.y, np.x) + 1){
+                p = np;
+                break;
+            }
+        }
+        gb_array_append(path, p);
+        // printf("(%i, %i)\n", p.y, p.x);
+    }
+
+    day16_print(data, path, a);
+
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -1645,6 +1745,7 @@ int main(int argc, char**argv) {
     CASE_DAY(13, "../data/data13.txt")
     CASE_DAY(14, "../data/data14.txt")
     CASE_DAY(15, "../data/data15.txt")
+    CASE_DAY(16, "../data/data16.txt")
     default:
         puts("Bad exercise number");
         return 1;
