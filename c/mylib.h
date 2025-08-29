@@ -6,12 +6,24 @@
 
 #define FOR(idx, start, end) for(i32 idx = (start);idx < (end);idx += 1)
 
+i64 pow_i64(i64 base, i64 exp) {
+    if (exp == 0) return 1;
+    if (exp == 1) return base;
+    i64 res = 0;
+    i64 half_exp = exp / 2;
+    b32 odd_exp = exp & 1;
+    i64 half_pow = pow_i64(base, half_exp);
+
+    return half_pow * half_pow * ((odd_exp) ? base : 1);
+}
+
+// #define gb_array_print(x, a)
+
 // note: matrix type is adapted from gb_array_*
 
 typedef struct _matrixHeader {
 	isize       rows, cols;
 } matrixHeader;
-
 
 #define matrix(Type) Type *
 
@@ -69,6 +81,67 @@ matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a);
 matrix(i8) matrix_load_from_buf(i8* buf, i32 len, gbAllocator a);
 
 
+// min heap (only on builtin scalars)
+
+#define minheap(Type) gbArray(Type)
+#define minheap_init(x, a) gb_array_init(x, a)
+#define minheap_free(x) gb_array_free(x)
+
+#define minheap_insert(x, value) do {               \
+    gb_array_append(x, value);                      \
+    minheap_restore_heap(x, 0, gb_array_count(x));  \
+} while (0)
+
+#define minheap_top(x) x[0]
+#define minheap_pop(x) do {                         \
+    typeof_swap(x[0], x[gb_array_count(x) - 1]);    \
+    gb_array_pop(x);                                \
+    minheap_restore_heap(x, 0, gb_array_count(x));  \
+} while(0)
+
+// note: m is one past the end
+#define minheap_restore_heap(x, i, m) do {                                         \
+    i32 start = i;                                                                 \
+    i32 end = m;                                                                   \
+    while(1) {                                                                     \
+        b8 has_left_child = (start * 2 + 1) < end;                                 \
+        if (!has_left_child)                                                       \
+            break;                                                                 \
+        i32 smallest_child = start * 2 + 1;                                        \
+        if (smallest_child + 1 < end && x[smallest_child] > x[smallest_child + 1]) \
+            smallest_child += 1;                                                   \
+        if (x[start] > x[smallest_child]){                                         \
+            typeof_swap(x[start], x[smallest_child]);                              \
+            start = smallest_child;                                                \
+        } else {                                                                   \
+            start = end - 1;                                                       \
+            break;                                                                 \
+        }                                                                          \
+    }                                                                              \
+} while (0)
+
+#define minheap_heapify(x)                                  \
+    for(i32 i = gb_array_count(x) / 2;i >= 0; i -= 1) {     \
+        minheap_restore_heap(x, i, gb_array_count(x));      \
+    }
+
+#define typeof_swap(x, y) do {  \
+    __typeof__(x) tmp = (x);      \
+    (x) = (y);                      \
+    (y) = tmp;                    \
+} while(0)
+
+#define heapsort(x, b_ascending) do {                   \
+    minheap_heapify(x);                                 \
+    for(i32 i = gb_array_count(x) - 1;i >= 0;i -= 1) {  \
+        typeof_swap(x[0], x[i]);                        \
+        minheap_restore_heap(x, 0, i-1);                \
+    }                                                   \
+    if (b_ascending) {                                      \
+        FOR(i, 0, gb_array_count(x) / 2)                        \
+            typeof_swap(x[i], x[gb_array_count(x) - 1 - i]);    \
+    }                                                       \
+} while(0)
 
 #endif // MYLIB_H
 
@@ -87,7 +160,7 @@ matrix(i8) matrix_load_from_file(FILE* f, gbAllocator a) {
 
 // stride calc assumes file in binary mode!
 matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a) {
-    
+
     matrix_make(data, i8, a, data_len, 1);
     fread(data, 1, data_len, f);
 
@@ -136,12 +209,12 @@ matrix(i8) matrix_load_from_buf(i8* buf, i32 len, gbAllocator a) {
             break;
         };
     stride += 1;
-    
+
     i32 data_len = len;
     h = (buf[data_len - 1] != 0xA) ? // if end misses newline, pretend like it does exist
         (data_len+1) / (stride) :
         data_len / (stride);
-    
+
     matrix_make(data, i8, a, h, w);
     // copy and remove line endings
     i32 dest = 0;

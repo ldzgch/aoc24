@@ -23,16 +23,6 @@ u32 read_u32(FILE* f) {
     return res;
 }
 
-i64 pow_i64(i64 base, i64 exp) {
-    if (exp == 0) return 1;
-    if (exp == 1) return base;
-    i64 res = 0;
-    i64 half_exp = exp / 2;
-    b32 odd_exp = exp & 1;
-    i64 half_pow = pow_i64(base, half_exp);
-
-    return half_pow * half_pow * ((odd_exp) ? base : 1);
-}
 
 gbString read_entire_file(FILE* f, gbAllocator a) {
     fseek(f, 0, SEEK_END);
@@ -1109,7 +1099,7 @@ void DAY(12, f, a, part1) {
 
     matrix_make_like(visited, b8, a, data);
     FOR(i, 0, dh) FOR(j, 0, dw) matrix_at(visited, i, j) = false;
-    
+
     i64 price = 0;
 
     gbArray(i32) pos_stack; gb_array_init(pos_stack, a);
@@ -1157,7 +1147,7 @@ void DAY(12, f, a, part1) {
 
                 if (neww < 0 || neww >= dw ||
                     newh < 0 || newh >= dh) {
-                
+
                     perimeter += 1;
                     if (!part1) {
                         gb_array_append(sides, make_side(ih, iw, move, dw));
@@ -1194,14 +1184,14 @@ lbl_next_dfs_loop:
 
         b8* sides_visited = gb_alloc(a, gb_array_count(sides));
         FOR(i, 0, gb_array_count(sides)) sides_visited[i] = false;
-        
+
         b8 do_print = false; //  (type == 'R') && (area == 139);
-        
+
         FOR(i, 0, gb_array_count(sides)) {
             if (sides_visited[i]) continue;
             i32 curr = i;
             i32 curr_pos = sides[curr].pos2;
-            
+
             i32 start_pos = sides[curr].pos1;
 
             i32 curr_move = sides[curr].move;
@@ -1209,7 +1199,7 @@ lbl_next_dfs_loop:
             if (do_print) {
                 printf("start and inc\n");
             }
-            
+
             while (!sides_visited[curr]) {
                 sides_visited[curr] = true;
 
@@ -1217,10 +1207,10 @@ lbl_next_dfs_loop:
                     printf("\tpos1 %i, pos2 %i, move %i\n", sides[curr].pos1, sides[curr].pos2, curr_move);
                 }
 
-                
+
                 FOR(j, 0, gb_array_count(sides)) {
                     if (sides_visited[j]) continue;
-                    
+
 
                     // sides are not compatible with the opposite
                     #define IsNotCompatible(move1, move2) \
@@ -1229,8 +1219,8 @@ lbl_next_dfs_loop:
                         (move1 == 2 && move2 == 3) || \
                         (move1 == 3 && move2 == 2)) \
 
-                    
-                        
+
+
                     #define IsNextSide(pos_to_check, pos_to_go_next) \
                         if (curr_pos == pos_to_check) { \
                             if (IsNotCompatible(curr_move, sides[j].move)) { \
@@ -1251,7 +1241,7 @@ lbl_next_dfs_loop:
 
                     IsNextSide(sides[j].pos1, sides[j].pos2);
                     IsNextSide(sides[j].pos2, sides[j].pos1);
-                        
+
                     #undef IsNextSide
                     #undef IsNotCompatible
 
@@ -1291,15 +1281,15 @@ void DAY(13, f, a, part1) {
             py += 10000000000000;
         }
 
-        f64 k1 =    cast(f64)(by * px - bx * py) / 
+        f64 k1 =    cast(f64)(by * px - bx * py) /
                     cast(f64)(ax * by - bx * ay);
-        
-        f64 k2 =    cast(f64)(ax * py - ay * px) / 
+
+        f64 k2 =    cast(f64)(ax * py - ay * px) /
                     cast(f64)(ax * by - bx * ay);
-        
+
         if (lowest_price == (1LL << 60)) {
             lowest_price = 0;
-        } 
+        }
         i64 ksolution = (k1 >= 0.0 && k2 >= 0.0 && (gb__floor64(k1) == k1) && (gb__floor64(k2) == k2)) ?
             cast(i64)(gb__floor64(3 * k1 + k2)) : 0;
 
@@ -1327,7 +1317,7 @@ i32 day14_dfs(matrix(i8) data, i32 x, i32 y) {
             return 0;
     matrix_at(data, x, y) = '_';
 
-    return 
+    return
         day14_dfs(data, x, y+1) +
         day14_dfs(data, x, y-1) +
         day14_dfs(data, x+1, y) +
@@ -1347,13 +1337,13 @@ i32 day14_largest_cluster(gbArray(i32) xpos, gbArray(i32) ypos, gbAllocator a) {
         matrix_at(data, ypos[i], xpos[i]) = 'x';
 
     i32 largest_cluster = 0;
-    
+
     FOR(i, 0, matrix_rows(data)) FOR(j, 0, matrix_cols(data)) {
         i32 this_cluster = day14_dfs(data, i, j);
         if (largest_cluster < this_cluster)
             largest_cluster = this_cluster;
     }
-    
+
     matrix_delete(data, a);
     return largest_cluster;
 }
@@ -1390,11 +1380,11 @@ void DAY(14, f, a, part1) {
             if (newy >= 103) newy -= 103;
             ypos[r] = newy;
         }
-        
+
         if (!part1) {
             i32 lc = day14_largest_cluster(xpos, ypos, a);
             if (lc > 35) {
-                
+
                 printf("lc %i after iter: %i\n", lc, i+1);
                 day14_printstate(xpos, ypos, a);
             }
@@ -1484,7 +1474,7 @@ b8 day15_all_affected_boxes(matrix(i8) data, i32 y, i32 x, i8 op, gbArray(Day15B
         GB_ASSERT(false);
     }
     b8 can_move = true;
-    
+
     if (op_is_vert) {
         if (matrix_at(data, y, x) == '[') {
             can_move = can_move && day15_all_affected_boxes(data, ny, x+1, op, boxes);
@@ -1500,7 +1490,7 @@ b8 day15_all_affected_boxes(matrix(i8) data, i32 y, i32 x, i8 op, gbArray(Day15B
     // put it after
     Day15Box b = {y, x};
     gb_array_append(*boxes, b);
-    
+
     return can_move;
 }
 
@@ -1599,7 +1589,7 @@ found_robot:
     FOR(i, 0, rows) FOR(j, 0, cols) {
         if (matrix_at(data, i, j) == 'O' || matrix_at(data, i, j) == '[')
             gps_sum += 100 * i + j;
-        
+
     }
 
     printf("%lli", gps_sum);
@@ -1648,12 +1638,12 @@ void DAY(16, f, a, part1) {
     matrix_make_like(distance, i32, a, data);
     FOR(i, 0, rows) FOR(j, 0, cols)
         matrix_at(distance, i, j) = (1 << 20);
-        
+
     // bfs
     gbArray(Day16Point) pos_queue; gb_array_init(pos_queue, a);
     i32 queue_first_elem = 0;
     gbArray(i32) move_stack; gb_array_init(move_stack, a);
-    
+
     gb_array_append(pos_queue, S);
     matrix_at(distance, S.y, S.x) = 0;
     while(gb_array_count(pos_queue) - queue_first_elem > 0) {
@@ -1702,8 +1692,25 @@ void DAY(16, f, a, part1) {
         // printf("(%i, %i)\n", p.y, p.x);
     }
 
-    day16_print(data, path, a);
+    // day16_print(data, path, a);
+    gbArray(i32) test; gb_array_init(test, a);
+    gb_array_append(test, 2);
+    gb_array_append(test, 1);
+    gb_array_append(test, 5);
+    gb_array_append(test, 3);
 
+    gb_array_append(test, 4);
+    gb_array_append(test, 8);
+    gb_array_append(test, 7);
+    gb_array_append(test, 6);
+
+    minheap_heapify(test);
+
+    while(gb_array_count(test) > 0) {
+        printf("%i, ", minheap_top(test));
+        minheap_pop(test);
+    }
+    puts("");
 }
 
 int main(int argc, char**argv) {
@@ -1713,7 +1720,7 @@ int main(int argc, char**argv) {
     }
     gbAllocator a = gb_heap_allocator();
     f64 ex_nr = gb_str_to_f64(argv[1], NULL);
-    
+
     int ex_nr_int = (int)gb__floor64(ex_nr);
     b32 part = ex_nr > ex_nr_int ? false : true;
 
