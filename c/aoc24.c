@@ -1597,22 +1597,25 @@ found_robot:
 
 typedef struct _day16point {
     i32 y; i32 x;
+    i32 distance;
+    i32 from_move;
 } Day16Point;
 
-b8 point_eql(Day16Point p1, Day16Point p2) {
-    return p1.y == p2.y && p1.x == p2.x;
+i8 day16_cmp_rev(const Day16Point* p1, const Day16Point* p2) {
+    return -1 * (p1->distance < p2->distance ? -1 : p1->distance > p2->distance);
 }
 
-void day16_print(matrix(i8) data, gbArray(Day16Point) path, gbAllocator a) {
+void day16_print(matrix(i8) data, matrix(i32) distance, gbAllocator a) {
     matrix_make_like(tmp, i8, a, data);
 
     matrix_for(i, j, tmp) {
         matrix_at(tmp, i, j) = matrix_at(data, i, j);
+
+        if (matrix_at(distance, i, j) != (1 << 28)) {
+            matrix_at(tmp, i, j) = '0' + (matrix_at(distance, i, j) % 10);
+        }
     }
 
-    FOR(i, 0, gb_array_count(path)) {
-        matrix_at(tmp, path[i].y, path[i].x) = 'X';
-    }
 
     FOR(i, 0, matrix_rows(tmp)) {
         fwrite(&matrix_at(tmp, i, 0),  matrix_cols(tmp), 1, stdout);
@@ -1627,90 +1630,359 @@ void DAY(16, f, a, part1) {
     i32 rows =  matrix_rows(data);
     i32 cols =  matrix_cols(data);
 
-    Day16Point S, E;
+    i32 sy, sx, ey, ex;
     FOR(i, 0, rows) FOR(j, 0, cols) {
-        if (matrix_at(data, i, j) == 'S')
-            S = (Day16Point){i, j};
-        if (matrix_at(data, i, j) == 'E')
-            E = (Day16Point){i, j};
+        if (matrix_at(data, i, j) == 'S') {sy = i; sx = j;}
+        if (matrix_at(data, i, j) == 'E') {ey = i; ex = j;}
     }
 
     matrix_make_like(distance, i32, a, data);
     FOR(i, 0, rows) FOR(j, 0, cols)
-        matrix_at(distance, i, j) = (1 << 20);
+        matrix_at(distance, i, j) = (1 << 28);
+    matrix_at(distance, sy, sx) = 0;
 
-    // bfs
-    gbArray(Day16Point) pos_queue; gb_array_init(pos_queue, a);
-    i32 queue_first_elem = 0;
-    gbArray(i32) move_stack; gb_array_init(move_stack, a);
+    maxheap(Day16Point) pos_heap; maxheap_init(pos_heap, a);
 
-    gb_array_append(pos_queue, S);
-    matrix_at(distance, S.y, S.x) = 0;
-    while(gb_array_count(pos_queue) - queue_first_elem > 0) {
+    Day16Point S = (Day16Point){sy, sx, 0, 3};
+    maxheap_insert_with_comp(pos_heap, S, day16_cmp_rev);
+
+    while(maxheap_count(pos_heap) > 0) {
         // pop front
-        Day16Point p = pos_queue[queue_first_elem];
-        queue_first_elem += 1;
+        Day16Point p = maxheap_top(pos_heap);
+        maxheap_pop_with_comp(pos_heap, day16_cmp_rev);
+
+        // printf("curr: (%i, %i)\n", p.y, p.x);
 
         i32 ymove[] = {-1, 1, 0, 0};
         i32 xmove[] = {0, 0, -1, 1};
         FOR(i, 0, 4) {
-            Day16Point np = {p.y + ymove[i], p.x + xmove[i]};
-            if (matrix_at(data, np.y, np.x) == '#' || matrix_at(distance, np.y, np.x) != (1 << 20))
+            Day16Point np = {p.y + ymove[i], p.x + xmove[i], 0, i};
+
+            if (matrix_at(data, np.y, np.x) == '#' || matrix_at(distance, np.y, np.x) != (1 << 28))
                 continue;
-            gb_array_append(pos_queue, np);
-
-            // i32 dist_old = matrix_at(distance, np.y, np.x);
-            i32 dist_this_path = matrix_at(distance, p.y, p.x) + 1;
-
+            b8 is_turn = p.from_move != i;
+            i32 dist_this_path = matrix_at(distance, p.y, p.x) + 1 + (is_turn ? 1000 : 0);
             matrix_at(distance, np.y, np.x) = dist_this_path;
-        }
 
+            np.distance = matrix_at(distance, np.y, np.x);
+            maxheap_insert_with_comp(pos_heap, np, day16_cmp_rev);
+        }
     }
 
+    //day16_print(data, distance, a);
+
     printf("dims: (%i, %i)\n", rows, cols);
-    printf("S: (%i, %i)\n", S.y, S.x);
-    printf("E: (%i, %i)\n", E.y, E.x);
+    printf("S: (%i, %i)\n", sy, sx);
+    printf("E: (%i, %i)\n", ey, ex);
+    printf("dist E: %i\n", matrix_at(distance, ey, ex));
 
-    gbArray(Day16Point) path; gb_array_init(path, a);
+}
 
-    Day16Point p  = E;
-    while(!point_eql(p, S)) {
-        i32 curr_dist = matrix_at(distance, p.y, p.x);
+/*
+B = A % 8
 
-        i32 ymove[] = {-1, 1, 0, 0};
-        i32 xmove[] = {0, 0, -1, 1};
-        FOR(i, 0, 4) {
-            Day16Point np = {p.y + ymove[i], p.x + xmove[i]};
-            if (matrix_at(data, np.y, np.x) == '#' || matrix_at(distance, np.y, np.x) == (1 << 20))
-                continue;
-            if (curr_dist == matrix_at(distance, np.y, np.x) + 1){
-                p = np;
+B = B xor 5
+
+C = A >> B
+
+B = B xor 6
+
+A = A >> 3
+
+B = B ^ C
+
+out B % 8
+
+jump to 0 if A != 0
+
+*/
+
+void run_program(i8* program, i32 prog_len, i64 regA, i64 regB, i64 regC, gbString* output) {
+    while (regA != 0) {
+        regB = regA % 8;
+        regC = regA >> (regB ^ 5);
+
+        regB = regB ^ (3 ^ regC);
+        gb_string_append_rune(*output, (regB % 8) + '0');
+        gb_string_append_rune(*output, ',');
+
+        regA >>= 3;
+    }
+    return;
+
+    i32 ip = 0;
+    b8 inp_is_opcode = true;
+    i32 op;
+    while (ip < prog_len) {
+        if (program[ip] == ',') {
+            ip += 1;
+            continue;
+        }
+
+        i32 inp = program[ip] - '0';
+
+        if (inp_is_opcode) {
+            op = inp;
+        } else {
+            i32 lit_operand = inp;
+            i32 combo_operand;
+            switch (inp) {
+            case 0:
+            case 1:
+            case 2:
+            case 3:
+                combo_operand = inp;
+            break;
+            case 4:
+                combo_operand = regA;
+            break;
+            case 5:
+                combo_operand = regB;
+            break;
+            case 6:
+                combo_operand = regC;
+            break;
+            case 7:
+            default: GB_ASSERT(false);
+
+            }
+
+            switch (op) {
+            case 0: // a divide
+                regA = regA >> combo_operand;
+            break;
+            case 1: // b xor lit
+                regB = regB ^ lit_operand;
+            break;
+            case 2: // combo mod 8
+                regB = combo_operand % 8;
+            break;
+            case 3: // jnz
+                if (regA != 0)
+                    ip = lit_operand - 1;
+            break;
+            case 4: // b xor c
+                regB = regB ^ regC;
+            break;
+            case 5: // out
+                gb_string_append_rune(*output, (combo_operand % 8) + '0');
+                gb_string_append_rune(*output, ',');
+            break;
+            case 6:
+                regB = regA >> combo_operand;
+            break;
+            case 7:
+                regC = regA >> combo_operand;
+            break;
+            default:
+                GB_ASSERT(false);
+            }
+        }
+
+        ip += 1;
+        inp_is_opcode = !inp_is_opcode;
+    }
+    gb_string_trim(*output, ",");
+}
+
+void DAY(17, f, a, part1) {
+    i64 regA, regB, regC;
+    fscanf(f, "Register A: %lli\n", &regA);
+    fscanf(f, "Register B: %lli\n", &regB);
+    fscanf(f, "Register C: %lli\n", &regC);
+
+    i8 program[1000];
+    fscanf(f, "\nProgram: %s\n", program);
+    i32 prog_len = gb_strlen(program);
+
+    gbString output = gb_string_make_reserve(a, 16 * 100);
+    if (part1) {
+        run_program(program, prog_len, regA, regB, regC, &output);
+        printf("Out: %s", output);
+    }
+    else {
+        i32 mill = 1000000;
+        FOR(new_regA, 35 * mill, 100 * mill) {
+            printf("\r%i   ", new_regA);
+            gb_string_clear(output);
+            run_program(program, prog_len, new_regA, regB, regC, &output);
+
+            if (gb_strncmp(output, program, prog_len) == 0) {
+                printf("\n%s   \n", output);
+                printf("Found eql at %i", new_regA);
                 break;
             }
         }
-        gb_array_append(path, p);
-        // printf("(%i, %i)\n", p.y, p.x);
+    }
+}
+
+void day18_print(matrix(i8) space, gbAllocator a) {
+    matrix_make_like(tmp, i8, a, space);
+    matrix_for(x, y, space) {
+        matrix_at(tmp, x, y) = matrix_at(space, x, y);
     }
 
-    // day16_print(data, path, a);
-    gbArray(i32) test; gb_array_init(test, a);
-    gb_array_append(test, 2);
-    gb_array_append(test, 1);
-    gb_array_append(test, 5);
-    gb_array_append(test, 3);
-
-    gb_array_append(test, 4);
-    gb_array_append(test, 8);
-    gb_array_append(test, 7);
-    gb_array_append(test, 6);
-
-    minheap_heapify(test);
-
-    while(gb_array_count(test) > 0) {
-        printf("%i, ", minheap_top(test));
-        minheap_pop(test);
+    FOR(i, 0, matrix_rows(tmp)) {
+        fwrite(&matrix_at(tmp, i, 0), 1, matrix_cols(tmp), stdout);
+        puts("");
     }
-    puts("");
+
+    matrix_delete(tmp, a);
+}
+
+void DAY(18, f, a, part1) {
+    matrix_make(space, i8, a, 71, 71);
+    matrix_make_like(distance, i32, a, space);
+
+    i32 max_distance = (1 << 30);
+    matrix_fill(space, '.');
+    matrix_fill(distance, max_distance);
+
+    FOR(i, 0, 1024) {
+        i32 x, y;
+        fscanf(f, "%i,%i\n", &x, &y);
+
+        matrix_at(space, x, y) = '#';
+    }
+
+    gbArray(i32) xpos; gb_array_init(xpos, a);
+    gbArray(i32) ypos; gb_array_init(ypos, a);
+    i32 queue_start = 0;
+
+    matrix_at(distance, 0, 0) = 0;
+    gb_array_append(xpos, 0);
+    gb_array_append(ypos, 0);
+
+    if (part1) {
+        while (gb_array_count(xpos) - queue_start > 0) {
+            i32 x = xpos[queue_start];
+            i32 y = ypos[queue_start];
+            queue_start += 1;
+
+            matrix_at(space, x, y) = 'v';
+
+            i32 xmove[] = {0, 0, -1, 1};
+            i32 ymove[] = {-1, 1, 0, 0};
+            FOR(move, 0, 4) {
+                i32 nx = x + xmove[move];
+                i32 ny = y + ymove[move];
+
+                if (nx < 0 || nx > 70 || ny < 0 || ny > 70) continue;
+                if (matrix_at(space, nx, ny) == '#') continue;
+                if (matrix_at(distance, nx, ny) != max_distance) continue;
+
+                matrix_at(distance, nx, ny) = matrix_at(distance, x, y) + 1;
+                gb_array_append(xpos, nx);
+                gb_array_append(ypos, ny);
+
+            }
+        }
+        // day18_print(space, a);
+        printf("%i", matrix_at(distance, 70, 70));
+    } else {
+        while (!feof(f)) {
+            i32 x, y;
+            fscanf(f, "%i,%i\n", &x, &y);
+            matrix_at(space, x, y) = '#';
+
+            // reset bfs
+            matrix_fill(distance, max_distance);
+            gb_array_clear(xpos);
+            gb_array_clear(ypos);
+            queue_start = 0;
+
+            // init bfs
+            matrix_at(distance, 0, 0) = 0;
+            gb_array_append(xpos, 0);
+            gb_array_append(ypos, 0);
+
+            // run bfs
+            while (gb_array_count(xpos) - queue_start > 0) {
+                i32 x = xpos[queue_start];
+                i32 y = ypos[queue_start];
+                queue_start += 1;
+
+                matrix_at(space, x, y) = 'v';
+
+                i32 xmove[] = {0, 0, -1, 1};
+                i32 ymove[] = {-1, 1, 0, 0};
+                FOR(move, 0, 4) {
+                    i32 nx = x + xmove[move];
+                    i32 ny = y + ymove[move];
+
+                    if (nx < 0 || nx > 70 || ny < 0 || ny > 70) continue;
+                    if (matrix_at(space, nx, ny) == '#') continue;
+                    if (matrix_at(distance, nx, ny) != max_distance) continue;
+
+                    matrix_at(distance, nx, ny) = matrix_at(distance, x, y) + 1;
+                    gb_array_append(xpos, nx);
+                    gb_array_append(ypos, ny);
+
+                }
+            }
+            if (matrix_at(distance, 70, 70) == max_distance) {
+                printf("Unreachable after: %i,%i", x, y);
+                break;
+            }
+        }
+    }
+}
+
+typedef struct i8slice {
+    i8* ptr; i32 len;
+} i8slice;
+
+void i8slice_print(i8slice s) {
+    fwrite(s.ptr, s.len, 1, stdout);
+}
+
+b8 day19_is_possible(i8slice target) {
+
+    return false;
+}
+
+void DAY(19, f, a, part1) {
+    gbString s = read_entire_file(f, a);
+    i32 slen = gb_string_length(s);
+
+    gbArray(i8slice) patterns; gb_array_init(patterns, a);
+
+    i32 start = 0, end = 0;
+
+    while (true) {
+        start = end;
+        while (end < slen && gb_char_is_alpha(s[end])) {
+            end++;
+        }
+        gb_array_append(patterns, ((i8slice){&s[start], end-start}));
+        if (s[end] != ',')
+            break;
+        while(end < slen && !gb_char_is_alpha(s[end]))
+            end++;
+    }
+
+    while(end < slen && !gb_char_is_alpha(s[end]))
+            end++;
+
+    i32 n_possible = 0;
+    while (true) {
+        start = end;
+        while (end < slen && gb_char_is_alpha(s[end])) {
+            end++;
+        }
+
+        i8slice target = ((i8slice){&s[start], end-start});
+
+
+        if (day19_is_possible(target))
+            n_possible += 1;
+
+        while(end < slen && !gb_char_is_alpha(s[end]))
+            end++;
+        if (end == slen)
+            break;
+    }
+    printf("%i", n_possible);
 }
 
 int main(int argc, char**argv) {
@@ -1753,6 +2025,9 @@ int main(int argc, char**argv) {
     CASE_DAY(14, "../data/data14.txt")
     CASE_DAY(15, "../data/data15.txt")
     CASE_DAY(16, "../data/data16.txt")
+    CASE_DAY(17, "../data/data17.txt")
+    CASE_DAY(18, "../data/data18.txt")
+    CASE_DAY(19, "../data/data19.txt")
     default:
         puts("Bad exercise number");
         return 1;

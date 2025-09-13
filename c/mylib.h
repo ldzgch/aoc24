@@ -81,38 +81,42 @@ matrix(i8) matrix_load_from_file_full(FILE* f, i64 data_len, gbAllocator a);
 matrix(i8) matrix_load_from_buf(i8* buf, i32 len, gbAllocator a);
 
 
-// min heap (only on builtin scalars)
+// max heap (requires comp function)
 
-#define minheap(Type) gbArray(Type)
-#define minheap_init(x, a) gb_array_init(x, a)
-#define minheap_free(x) gb_array_free(x)
+#define maxheap(Type) gbArray(Type)
+#define maxheap_init(x, a) gb_array_init(x, a)
+#define maxheap_free(x) gb_array_free(x)
 
-#define minheap_insert(x, value) do {               \
-    gb_array_append(x, value);                      \
-    minheap_restore_heap(x, 0, gb_array_count(x));  \
+#define maxheap_count(x) gb_array_count(x)
+
+#define maxheap_insert_with_comp(x, value, comp_fptr) do {               \
+    gb_array_append(x, value);                                           \
+    maxheap_restore_heap_with_comp(x, 0, gb_array_count(x), comp_fptr);  \
 } while (0)
 
-#define minheap_top(x) x[0]
-#define minheap_pop(x) do {                         \
-    typeof_swap(x[0], x[gb_array_count(x) - 1]);    \
-    gb_array_pop(x);                                \
-    minheap_restore_heap(x, 0, gb_array_count(x));  \
+#define maxheap_top(x) x[0]
+
+#define maxheap_pop_with_comp(x, comp_fptr) do {                         \
+    typeof_swap(x[0], x[gb_array_count(x) - 1]);                         \
+    gb_array_pop(x);                                                     \
+    maxheap_restore_heap_with_comp(x, 0, gb_array_count(x), comp_fptr);  \
 } while(0)
 
 // note: m is one past the end
-#define minheap_restore_heap(x, i, m) do {                                         \
+#define maxheap_restore_heap_with_comp(x, i, m, comp_fptr) do {                    \
     i32 start = i;                                                                 \
     i32 end = m;                                                                   \
     while(1) {                                                                     \
         b8 has_left_child = (start * 2 + 1) < end;                                 \
         if (!has_left_child)                                                       \
             break;                                                                 \
-        i32 smallest_child = start * 2 + 1;                                        \
-        if (smallest_child + 1 < end && x[smallest_child] > x[smallest_child + 1]) \
-            smallest_child += 1;                                                   \
-        if (x[start] > x[smallest_child]){                                         \
-            typeof_swap(x[start], x[smallest_child]);                              \
-            start = smallest_child;                                                \
+        i32 largest_child = start * 2 + 1;                                        \
+        if (largest_child + 1 < end &&                                            \
+            comp_fptr(&x[largest_child + 1], &x[largest_child]) == 1)           \
+            largest_child += 1;                                                   \
+        if (comp_fptr(&x[largest_child], &x[start]) == 1){                       \
+            typeof_swap(x[start], x[largest_child]);                              \
+            start = largest_child;                                                \
         } else {                                                                   \
             start = end - 1;                                                       \
             break;                                                                 \
@@ -120,27 +124,23 @@ matrix(i8) matrix_load_from_buf(i8* buf, i32 len, gbAllocator a);
     }                                                                              \
 } while (0)
 
-#define minheap_heapify(x)                                  \
-    for(i32 i = gb_array_count(x) / 2;i >= 0; i -= 1) {     \
-        minheap_restore_heap(x, i, gb_array_count(x));      \
+#define maxheap_heapify_with_comp(x, comp_fptr)                                  \
+    for(i32 i = gb_array_count(x) / 2;i >= 0; i -= 1) {                          \
+        maxheap_restore_heap_with_comp(x, i, gb_array_count(x), comp_fptr);      \
     }
 
-#define typeof_swap(x, y) do {  \
-    __typeof__(x) tmp = (x);      \
+#define typeof_swap(x, y) do {      \
+    __typeof__(x) tmp = (x);        \
     (x) = (y);                      \
-    (y) = tmp;                    \
+    (y) = tmp;                      \
 } while(0)
 
-#define heapsort(x, b_ascending) do {                   \
-    minheap_heapify(x);                                 \
-    for(i32 i = gb_array_count(x) - 1;i >= 0;i -= 1) {  \
-        typeof_swap(x[0], x[i]);                        \
-        minheap_restore_heap(x, 0, i-1);                \
-    }                                                   \
-    if (b_ascending) {                                      \
-        FOR(i, 0, gb_array_count(x) / 2)                        \
-            typeof_swap(x[i], x[gb_array_count(x) - 1 - i]);    \
-    }                                                       \
+#define heapsort(x, comp_fptr) do {                             \
+    maxheap_heapify_with_comp(x, comp_fptr);                    \
+    for(i32 i = gb_array_count(x) - 1;i >= 0;i -= 1) {          \
+        typeof_swap(x[0], x[i]);                                \
+        maxheap_restore_heap_with_comp(x, 0, i-1, comp_fptr);   \
+    }                                                           \
 } while(0)
 
 #endif // MYLIB_H

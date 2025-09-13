@@ -39,7 +39,7 @@ void test_minheap() {
     gb_array_append(test, 7);
     gb_array_append(test, 6);
 
-    heapsort(test, false);
+    heapsort(test, gb__i32_cmp);
 
     FOR(i, 0, gb_array_count(test))
         printf("%i, ", test[i]);
@@ -52,7 +52,7 @@ void test_minheap() {
         i32 rng = gb_random_range_i64(&r, 1, 500);
         gb_array_append(test, rng);
     }
-    heapsort(test, true);
+    heapsort(test, gb__i32_cmp);
 
     FOR(i, 0, gb_array_count(test))
         printf("%i, ", test[i]);
