@@ -1936,9 +1936,69 @@ void i8slice_print(i8slice s) {
     fwrite(s.ptr, s.len, 1, stdout);
 }
 
-b8 day19_is_possible(i8slice target) {
+i32 day19_lexical_cmp(const void* a, const void* b) {
+    i8slice sa = *cast(i8slice*)a;
+    i8slice sb = *cast(i8slice*)b;
 
-    return false;
+    FOR(i, 0, gb_min(sa.len, sb.len)) {
+        if (sa.ptr[i] < sb.ptr[i])
+            return -1;
+        if (sa.ptr[i] > sb.ptr[i])
+            return 1;
+    }
+    if (sa.len < sb.len)
+        return -1;
+    if (sa.len > sb.len)
+        return 1;
+    return 0;
+}
+
+i64 day19_is_possible(gbArray(i8slice) patterns, i8slice target, gbAllocator a) {
+    // 1. find all patterns in target (array of slices)
+    // 2. dp array: i -> > 0 means that target[:i] can be matched
+    // 3. one iteration, where for all i a match combined with a true entry in dp array
+    gbArray(i8slice) matches; gb_array_init(matches, a);
+
+    FOR(start, 0, target.len) {
+        FOR(match_len, 1, 10) {
+            if (start + match_len > target.len) continue;
+            i8slice try = {target.ptr + start, match_len};
+            i8slice* res = bsearch(&try, patterns, gb_array_count(patterns), sizeof(i8slice), day19_lexical_cmp);
+            if (res == NULL) continue;
+
+            gb_array_append(matches, try);
+        }
+    }
+/*
+    FOR(j, 0, gb_array_count(matches)) {
+        i8slice_print(matches[j]); printf(" at pos %i\n", matches[j].ptr - target.ptr);
+    }
+*/
+
+    i32 dplen = target.len + 10;
+    i64* dp = gb_alloc(a, dplen * sizeof(i64));
+    FOR(i, 0, dplen) dp[i] = 0;
+    dp[0] = 1;
+
+    FOR(i, 1, target.len+1) {
+        if (dp[i-1] > 0) { // can solve target[:i-1]
+            FOR(j, 0, gb_array_count(matches)) {
+                if (matches[j].ptr - target.ptr == i - 1) {
+                    dp[i-1 + matches[j].len] += dp[i-1];
+                }
+            }
+        }
+    }
+    /*
+    FOR(i, 0, target.len+1) {
+        printf("%i, ", dp[i]);
+    }
+    puts("");
+    */
+    i64 res = dp[target.len];
+    gb_free(a, dp);
+    gb_array_free(matches);
+    return res;
 }
 
 void DAY(19, f, a, part1) {
@@ -1964,7 +2024,9 @@ void DAY(19, f, a, part1) {
     while(end < slen && !gb_char_is_alpha(s[end]))
             end++;
 
-    i32 n_possible = 0;
+    qsort(patterns, gb_array_count(patterns), sizeof(i8slice), day19_lexical_cmp);
+
+    i64 n_possible = 0;
     while (true) {
         start = end;
         while (end < slen && gb_char_is_alpha(s[end])) {
@@ -1973,16 +2035,18 @@ void DAY(19, f, a, part1) {
 
         i8slice target = ((i8slice){&s[start], end-start});
 
+        // i8slice_print(target); puts("");
 
-        if (day19_is_possible(target))
-            n_possible += 1;
+        i64 n_matchings = day19_is_possible(patterns, target, a);
+        if (n_matchings > 0)
+            n_possible += part1 ? 1 : n_matchings;
 
         while(end < slen && !gb_char_is_alpha(s[end]))
             end++;
         if (end == slen)
             break;
     }
-    printf("%i", n_possible);
+    printf("%lli", n_possible);
 }
 
 int main(int argc, char**argv) {
