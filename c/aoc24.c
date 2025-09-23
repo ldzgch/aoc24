@@ -24,15 +24,28 @@ u32 read_u32(FILE* f) {
 }
 
 
-gbString read_entire_file(FILE* f, gbAllocator a) {
+
+typedef struct i8slice {
+    i8* ptr; i32 len;
+} i8slice;
+
+void i8slice_print(i8slice s) {
+    fwrite(s.ptr, s.len, 1, stdout);
+}
+void i8slice_free(i8slice s, gbAllocator a) {
+    gb_free(a, s.ptr);
+}
+
+i8slice read_entire_file(FILE* f, gbAllocator a) {
     fseek(f, 0, SEEK_END);
     i64 file_len = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    gbString data = gb_string_make_length(a, NULL, file_len);
+    // i64 file_len_align = file_len + 16 - (file_len & 0x0F);
+    i8* data = gb_alloc(a, file_len);
     fread(data, 1, file_len, f);
 
-    return data;
+    return (i8slice){data, file_len};
 }
 
 
@@ -740,8 +753,9 @@ void DAY(8, f, a, part1) {
 }
 
 void DAY(9, f, a, part1) {
-    gbString data = read_entire_file(f, a);
-    i32 data_len = gb_string_length(data);
+    i8slice data_s = read_entire_file(f, a);
+    i32 data_len = data_s.len;
+    i8* data = data_s.ptr;
 
     i64 num_file_blocks = 0;
     i64 num_blocks = 0;
@@ -1495,8 +1509,9 @@ b8 day15_all_affected_boxes(matrix(i8) data, i32 y, i32 x, i8 op, gbArray(Day15B
 }
 
 void DAY(15, f, a, part1) {
-    gbString s = read_entire_file(f, a);
-    i32 file_len = gb_string_length(s);
+    i8slice slice = read_entire_file(f, a);
+    i32 file_len = slice.len;
+    i8*s = slice.ptr;
     i32 matrix_len;
     FOR(i, 0, file_len - 2) {
         if ((s[i] == '\n' && s[i+1] == '\n') ||
@@ -1928,14 +1943,6 @@ void DAY(18, f, a, part1) {
     }
 }
 
-typedef struct i8slice {
-    i8* ptr; i32 len;
-} i8slice;
-
-void i8slice_print(i8slice s) {
-    fwrite(s.ptr, s.len, 1, stdout);
-}
-
 i32 day19_lexical_cmp(const void* a, const void* b) {
     i8slice sa = *cast(i8slice*)a;
     i8slice sb = *cast(i8slice*)b;
@@ -2002,8 +2009,9 @@ i64 day19_is_possible(gbArray(i8slice) patterns, i8slice target, gbAllocator a) 
 }
 
 void DAY(19, f, a, part1) {
-    gbString s = read_entire_file(f, a);
-    i32 slen = gb_string_length(s);
+    i8slice slice = read_entire_file(f, a);
+    i32 slen = slice.len;
+    i8*s = slice.ptr;
 
     gbArray(i8slice) patterns; gb_array_init(patterns, a);
 
@@ -2049,6 +2057,278 @@ void DAY(19, f, a, part1) {
     printf("%lli", n_possible);
 }
 
+matrix(i8) day20_data;
+matrix(i32) day20_distance;
+gbArray(i32) day20_xpos;
+gbArray(i32) day20_ypos;
+
+i32 day20_bfs(i32 sy, i32 sx) {
+    i32 rows = matrix_rows(day20_data), cols = matrix_cols(day20_data);
+    i32 max_distance = 1 << 30;
+    i32 queue_start = 0;
+    matrix_fill(day20_distance, max_distance);
+    gb_array_clear(day20_xpos);
+    gb_array_clear(day20_ypos);
+
+    // set first pos
+    gb_array_append(day20_xpos, sy);
+    gb_array_append(day20_ypos, sx);
+    matrix_at(day20_distance, sy, sx) = 0;
+
+    // run
+    while (gb_array_count(day20_xpos) - queue_start > 0) {
+        i32 x = day20_xpos[queue_start];
+        i32 y = day20_ypos[queue_start];
+        queue_start += 1;
+
+        matrix_at(day20_data, x, y) = 'v';
+
+        i32 xmove[] = {0, 0, -1, 1};
+        i32 ymove[] = {-1, 1, 0, 0};
+        FOR(move, 0, 4) {
+            i32 nx = x + xmove[move];
+            i32 ny = y + ymove[move];
+
+            if (nx < 0 || nx > cols || ny < 0 || ny > rows) continue;
+            if (matrix_at(day20_data, nx, ny) == '#') continue;
+            if (matrix_at(day20_distance, nx, ny) != max_distance) continue;
+
+            matrix_at(day20_distance, nx, ny) = matrix_at(day20_distance, x, y) + 1;
+            gb_array_append(day20_xpos, nx);
+            gb_array_append(day20_ypos, ny);
+        }
+    }
+}
+
+void DAY(20, f, a, part1) {
+    day20_data = matrix_load_from_file(f, a);
+
+    i32 rows = matrix_rows(day20_data), cols = matrix_cols(day20_data);
+    i32 sy, sx;
+    i32 ey, ex;
+    FOR(row, 0, rows) FOR(col, 0, cols) {
+        if (matrix_at(day20_data, row, col) == 'S') {
+            sy = row; sx = col;
+        }
+        if (matrix_at(day20_data, row, col) == 'E') {
+            ey = row; ex = col;
+        }
+    }
+
+    i32* dist_counts = gb_alloc(a, 10000 * sizeof(i32));
+    FOR(i, 0, 10000) dist_counts[i] = 0;
+
+    // bfs init
+    matrix_make_like(_dummy, i32, a, day20_data);
+    day20_distance = _dummy;
+    gb_array_init(day20_xpos, a);
+    gb_array_init(day20_ypos, a);
+
+    day20_bfs(sy, sx);
+    i32 normal_dist = matrix_at(day20_distance, ey, ex);
+
+    FOR(row, 1, rows - 1) FOR(col, 1, cols - 1) {
+        // remove wall
+        if (matrix_at(day20_data, row, col) != '#') continue;
+        matrix_at(day20_data, row, col) = '.';
+
+        day20_bfs(sy, sx);
+        dist_counts[matrix_at(day20_distance, ey, ex)] += 1;
+
+        matrix_at(day20_data, row, col) = '#';
+    }
+
+    i32 num_res = 0;
+    FOR(i, 0, 10000) {
+        if (dist_counts[i] > 0 && (normal_dist - i) >= 100) {
+            printf("savings %i, count %i\n", normal_dist - i, dist_counts[i]);
+            num_res += dist_counts[i];
+        }
+    }
+    printf("%i", num_res);
+}
+
+i8 numpad_data[] = {
+    7, 8, 9,
+    4, 5, 6,
+    1, 2, 3,
+    '#', 0, 'A'
+};
+
+i8 keypad_data[] = {
+    '#', '^', 'A',
+    '<', 'v', '>'
+};
+
+matrix(i8) numpad_path_lens;
+matrix(i8) keypad_path_lens;
+void init_path_lens(gbAllocator a) {
+    matrix_make(numpad, i8, a, 4, 3);
+    matrix_copy_from_array(numpad, numpad_data, 12);
+
+    matrix_make(keypad, i8, a, 2, 3);
+    matrix_copy_from_array(keypad, keypad_data, 6);
+
+    matrix_make(tmp, i8, a, 12, 12);
+
+    matrix_make(distances, i8, a, 4, 3);
+    gbArray(i8) xpos; gb_array_init(xpos, a);
+    gbArray(i8) ypos; gb_array_init(ypos, a);
+    i32 queue_start = 0;
+
+    FOR(i, 0, 12) {
+        if (numpad[i] == '#') continue;
+        // run bfs on numpad
+        i32 cols = matrix_cols(numpad);
+        i32 rows = matrix_rows(numpad);
+
+        gb_array_clear(xpos);
+        gb_array_clear(ypos);
+        queue_start = 0;
+        matrix_fill(distances, 100);
+
+        gb_array_append(xpos, i % cols);
+        gb_array_append(ypos, i / cols);
+        matrix_at(distances, i / cols, i % cols) = 0;
+
+        while (gb_array_count(xpos) > queue_start) {
+            i8 x = xpos[queue_start];
+            i8 y = ypos[queue_start];
+            queue_start += 1;
+
+            i8 xmove[] = {0, 0, -1, 1};
+            i8 ymove[] = {-1, 1, 0, 0};
+
+            FOR(move, 0, 4) {
+                i8 nx = x + xmove[move];
+                i8 ny = y + ymove[move];
+
+                if (ny < 0 || nx < 0 || ny >= rows || nx >= cols) continue;
+                if (matrix_at(distances, ny, nx) < 100) continue;
+                if (matrix_at(numpad, ny, nx) == '#') continue;
+
+                gb_array_append(xpos, nx);
+                gb_array_append(ypos, ny);
+                matrix_at(distances, ny, nx) = matrix_at(distances, y, x) + 1;
+            }
+        }
+        FOR(j, 0, 12) {
+            matrix_at(tmp, i, j) = distances[j];
+        }
+
+    }
+    numpad_path_lens = tmp;
+}
+
+i32 numpad_num_presses(i8 numpad_pos, i32 numpad_target_pos) {
+    i8 px = numpad_pos % 3;
+    i8 py = numpad_pos / 3;
+
+    i8 tx = numpad_target_pos % 3;
+    i8 ty = numpad_target_pos / 3;
+
+
+}
+
+void DAY(21, f, a, part1) {
+    gbArray(i32) nums; gb_array_init(nums, a);
+    while(!feof(f)) {
+        i32 num;
+        fscanf(f, "%iA\n", &num);
+
+        gb_array_append(nums, num);
+    }
+    rewind(f);
+    i8slice slice = read_entire_file(f, a);
+    i8*s = slice.ptr;
+    i32 slen = slice.len;
+
+    gbArray(i8slice) codes; gb_array_init(codes, a);
+    i32 start = 0, end = 0;
+    while (start < slen) {
+        start = end;
+        while(start < slen && !gb_char_is_digit(s[start])) start += 1;
+        end = start;
+        while(end < slen && s[end] != '\n') end += 1;
+
+        i8slice slice = {&s[start], end-start};
+        gb_array_append(codes, slice);
+    }
+
+    init_path_lens(a);
+
+
+
+    i32 total_complexity = 0;
+    i8 numpad_pos = 11;
+    FOR(i, 0, gb_array_count(codes)) {
+        i32 num_presses = 0;
+        FOR(j, 0, codes[i].len) {
+            i8 c = codes[i].ptr[j];
+            i8 numpad_target_pos = gb_char_is_digit(c) ? c - '0' : 11;
+            num_presses += numpad_num_presses(numpad_pos, numpad_target_pos);
+            numpad_pos = numpad_target_pos;
+        }
+        total_complexity += nums[i] * num_presses;
+    }
+    printf("%i", total_complexity);
+}
+
+i64 day22_random_gen(i64 secret) {
+    secret ^= (secret << 6);
+    secret %= (1 << 24);
+    secret ^= (secret >> 5);
+    secret %= (1 << 24);
+    secret ^= (secret << 11);
+    secret %= (1 << 24);
+    return secret;
+}
+
+void DAY(22, f, a, part1) {
+    i64 sum = 0;
+    map m_data = map_make(a);
+    map* m = &m_data;
+    while (!feof(f)) {
+        i64 num;
+        fscanf(f, "%lli\n", &num);
+
+        if (part1) {
+            FOR(i, 0, 2000) {
+                num = day22_random_gen(num);
+            }
+            sum += num;
+        } else {
+            i64 changes[4];
+            FOR(i, 0, 4) {
+                i64 new_num = day22_random_gen(num);
+                changes[i] = (new_num - num) % 10;
+                num = new_num;
+            }
+            FOR(i, 4, 2000) {
+                u32 changes_id =
+                     1 * (changes[0] + 9) +
+                    19 * (changes[1] + 9) +
+               19 * 19 * (changes[2] + 9) +
+          19 * 19 * 19 * (changes[3] + 9);
+
+                u64* res = map_get(m, changes_id);
+                if (res == NULL) map_put(m, changes_id, 0);
+                else *res += 1;
+
+                i64 new_num = day22_random_gen(num);
+                changes[0] = changes[1];
+                changes[1] = changes[2];
+                changes[2] = changes[3];
+                changes[3] = (new_num - num) % 10;
+                num = new_num;
+            }
+            
+        }
+    }
+    printf("%lli\n", sum);
+
+}
+
 int main(int argc, char**argv) {
     if (argc < 2) {
         puts("Provide exercise number");
@@ -2092,6 +2372,9 @@ int main(int argc, char**argv) {
     CASE_DAY(17, "../data/data17.txt")
     CASE_DAY(18, "../data/data18.txt")
     CASE_DAY(19, "../data/data19.txt")
+    CASE_DAY(20, "../data/data20.txt")
+    CASE_DAY(21, "../data/data21.txt")
+    CASE_DAY(22, "../data/data22.txt")
     default:
         puts("Bad exercise number");
         return 1;

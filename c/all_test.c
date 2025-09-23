@@ -1,5 +1,9 @@
+// #pragma GCC diagnostic ignore "-Wformat"
+
+
 #include "stdio.h"
 #define GB_IMPLEMENTATION
+#define MYLIB_IMPLEMENTATION
 #include "mylib.h"
 
 #define i64 long long
@@ -59,10 +63,55 @@ void test_minheap() {
     puts("");
 }
 
-int main() {
-    test_pow_i64();
+void test_map() {
+    map m_data = map_make(gb_heap_allocator());
+    map* m = &m_data;
+    u64* res;
 
-    test_minheap();
+    FOR(i, 200, 300) {
+        map_put(m, i * 45, i * 23);
+    }
+
+    FOR(i, 200, 300) {
+        res = map_get(m, i * 45);
+        if (res == NULL)
+            GB_ASSERT(false);
+        else
+            GB_ASSERT(*res == i * 23);
+
+        *res += 1;
+    }
+
+    FOR(i, 200, 300) {
+        res = map_get(m, i * 45);
+        GB_ASSERT(*res == i * 23 + 1);
+    }
+    // del some keys
+    FOR(i, 200, 300) {
+        map_del(m, i * 45);
+        i += 1;
+    }
+
+    FOR(i, 200, 300) {
+        res = map_get(m, i * 45);
+        b8 correct =
+            i%2 == 0 && res == NULL ||
+            i%2 == 1 && res != NULL;
+        if (!correct) DBG_ASSERT(false);
+    }
+    DBG_ASSERT(false);
+
+    map_free(m);
+}
+
+int main() {
+    // test_pow_i64();
+
+    // test_minheap();
+
+    //printf("%i", GB_DEFAULT_MEMORY_ALIGNMENT);
+
+    test_map();
 
     return 0;
 }
